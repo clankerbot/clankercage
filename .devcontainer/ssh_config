@@ -1,0 +1,5 @@
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile /home/node/.ssh/id_ed25519_clanker
+  IdentitiesOnly yes
