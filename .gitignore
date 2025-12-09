@@ -1,0 +1,9 @@
+# Conversation records (private)
+records/
+
+# Temporary files
+*.tmp
+.DS_Store
+
+# Test artifacts
+sync-test.md
