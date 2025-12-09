@@ -12,8 +12,10 @@ Clanker provides:
 
 ## Quick Setup
 
+No installation needed! Run directly:
+
 ```bash
-bash ~/.claude/clanker/scripts/claude-code.sh
+bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts/claude-code.sh)
 ```
 
 This script:
@@ -22,22 +24,21 @@ This script:
 - Starts the devcontainer with proper permissions
 - Makes `~/.claude` accessible from host and container
 
+**That's it!** No repo to clone, no files to manage.
+
 ## Directory Structure
+
+After running the setup script:
 
 ```
 ~/.claude/
-├── .devcontainer/           # Docker configuration (downloaded by setup script)
-│   ├── devcontainer.json
-│   ├── Dockerfile
-│   └── init-firewall.sh
-└── clanker/                 # This repo
-    ├── scripts/
-    │   ├── claude-code.sh   # Setup script
-    │   └── test-*.sh        # Integration tests
-    ├── tests/               # Test suite
-    ├── records/             # Context storage (NOT in git)
-    └── README.md
+└── .devcontainer/           # Docker configuration (downloaded by setup script)
+    ├── devcontainer.json
+    ├── Dockerfile
+    └── init-firewall.sh
 ```
+
+Clean and minimal - just the devcontainer config.
 
 ## Plugin Architecture
 
@@ -57,30 +58,25 @@ Browser automation plugin:
 
 ## Installation
 
-### 1. Install Clanker
+### 1. Run Setup Script
 
 ```bash
-# Clone this repo
-git clone https://github.com/clankerbot/clanker.git ~/.claude/clanker
-
-# Run setup script
-bash ~/.claude/clanker/scripts/claude-code.sh
+bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts/claude-code.sh)
 ```
 
 ### 2. Install Plugins (Optional)
 
 ```bash
-# Clone plugins
-git clone https://github.com/thekevinscott/scribble-pad.git ~/code/claude-plugins/scribble-pad
-git clone https://github.com/thekevinscott/browser-fallback.git ~/code/claude-plugins/browser-fallback
-
-# Add local marketplace
-/plugin marketplace add ~/code/claude-plugins
+# Add plugin marketplaces
+/plugin marketplace add thekevinscott/scribble-pad
+/plugin marketplace add thekevinscott/browser-fallback
 
 # Install plugins
-/plugin install scribble-pad@local
-/plugin install browser-fallback@local
+/plugin install scribble-pad@scribble-pad
+/plugin install browser-fallback@browser-fallback
 ```
+
+No repos to clone - everything installs directly from GitHub!
 
 ## Testing
 
@@ -150,10 +146,18 @@ Clanker provides the infrastructure; plugins provide the functionality.
 
 ## Setup on New Machine
 
-1. Copy `~/.claude/` from existing machine (or clone this repo)
-2. Run `scripts/claude-code.sh` to setup devcontainer
-3. Install plugins if desired
-4. All your configuration comes with you
+```bash
+# Run the setup script
+bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts/claude-code.sh)
+
+# Install plugins (optional)
+/plugin marketplace add thekevinscott/scribble-pad
+/plugin marketplace add thekevinscott/browser-fallback
+/plugin install scribble-pad@scribble-pad
+/plugin install browser-fallback@browser-fallback
+```
+
+Done! Copy `~/.claude/` to bring your configuration if desired.
 
 ## Troubleshooting
 
@@ -162,10 +166,9 @@ Clanker provides the infrastructure; plugins provide the functionality.
 - Try: `docker system prune` (removes old containers)
 - Verify devcontainer config: `cat ~/.claude/.devcontainer/devcontainer.json`
 
-**Tests failing?**
-- Fast tests run on host - should always pass
-- Integration test requires Docker
-- Check scripts are executable: `chmod +x ~/.claude/clanker/scripts/*.sh`
+**Want to run tests?**
+- Clone the repo: `git clone https://github.com/clankerbot/clanker.git`
+- Run tests: `bash clanker/scripts/run-tests.sh`
 
 **Plugins not loading?**
 - Run: `/plugin list` to see installed plugins
