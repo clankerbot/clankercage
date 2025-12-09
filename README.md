@@ -1,27 +1,54 @@
-# Claude Code Context Management
+# Clanker
+
+A comprehensive setup and configuration wrapper for Claude Code.
 
 ## Overview
 
-Automatic conversation context management using folder-based threading.
+Clanker provides:
+- **Easy Setup** - One-command devcontainer installation
+- **Context Management** - Auto-load/save conversations across sessions
+- **Global Configuration** - Shared settings and best practices
+- **Testing Infrastructure** - Automated validation suite
+- **Portability** - Sync your entire setup across machines
+- **Helper Scripts** - Utilities for common operations
 
-## Architecture
+## Key Features
 
-- **One folder = One conversation thread**
-- **Auto-load** on conversation start
-- **Auto-save** after significant work
-- **Portable** across machines (just copy ~/.claude)
+### 🚀 Quick Setup
+```bash
+bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts/claude-code.sh)
+```
+
+### 💾 Automatic Context Continuity
+- **Folder-based threading** - Each directory = separate conversation
+- **Auto-load** - Previous context loads automatically on start
+- **Auto-save** - Context saved periodically without manual intervention
+- **Timestamped backups** - Never lose conversation history
+
+### 🔧 Configuration Management
+- **Global instructions** in `~/.claude/CLAUDE.md`
+- **Consistent environment** across all projects
+- **Docker isolation** with proper permissions
+- **Single bind mount** strategy (no complexity)
+
+### ✅ Testing & Validation
+- **7 automated tests** verify setup correctness
+- **Host-container sync** validation
+- **Mount verification** checks
+- **Workflow testing** for all features
 
 ## Directory Structure
 
 ```
 ~/.claude/clanker/
+├── scripts/                                  # Executable scripts
+│   ├── claude-code.sh                       # Setup script
+│   ├── save-context.sh                      # Context save helper
+│   └── run-tests.sh                         # Test runner
+├── tests/                                    # Test suite
 ├── records/                                  # Context storage (NOT in git)
 │   ├── <folder-name>-latest.md             # Current context
 │   └── <folder-name>-YYYY-MM-DD_HH-MM-SS.md # Backups
-├── tests/                                    # Test suite
-├── save-context.sh                           # Helper script
-├── run-tests.sh                              # Test runner
-├── claude-code.sh                            # Setup script
 └── README.md                                 # This file
 ```
 
@@ -59,56 +86,99 @@ cd ~/myproject/
 git clone git@github.com:clankerbot/clanker.git ~/.claude/clanker
 
 # Run the setup script
-bash ~/.claude/clanker/claude-code.sh
+bash ~/.claude/clanker/scripts/claude-code.sh
 ```
 
 ### Manual Setup
 1. Copy `~/.claude/` from existing machine (or clone this repo to `~/.claude/clanker`)
-2. Run `claude-code.sh` to setup devcontainer
+2. Run `scripts/claude-code.sh` to setup devcontainer
 3. All your contexts and settings come with you
 
 ## Testing
 
 Run automated test suite:
 ```bash
-bash ~/.claude/clanker/run-tests.sh
+# Fast tests (run on host, ~1 second)
+bash ~/.claude/clanker/scripts/run-tests.sh
+
+# Integration test (starts container, ~30 seconds)
+bash ~/.claude/clanker/scripts/test-container.sh
 ```
 
-Expected output:
-```
-Running Claude Code Setup Tests...
+**Fast Tests** (validate host setup):
+- ✓ Directory structure exists
+- ✓ Global CLAUDE.md configured
+- ✓ Files are writable
+- ✓ Scripts work correctly
 
-✓ Test 1: Directory Structure
-✓ Test 2: Global CLAUDE.md with auto-save instructions
-✓ Test 3: Mount Verification - records/ is writable
-✓ Test 4: Save Context Workflow
-✓ Test 5: Context File Persistence
-✓ Test 6: Host-Container Sync (check host to verify)
-  File created: /Users/you/.claude/clanker/records/sync-test.md
-  Verify this file exists on host machine
-✓ Test 7: Folder Name Detection
+**Integration Test** (validates container):
+- ✓ devcontainer.json is valid
+- ✓ No obsolete mounts
+- ✓ Container starts successfully
+- ✓ Tests pass inside container
 
-================================
-✓ All tests passed: 7/7
+Run integration test **after making changes to devcontainer config** or when troubleshooting container issues.
+
+## How It Works
+
+### Auto-Load Context (Hooks)
+
+Clanker uses Claude Code's **UserPromptSubmit hook** to automatically inject:
+1. Global instructions from `~/.claude/CLAUDE.md`
+2. Previous conversation context from `~/.claude/clanker/records/`
+
+**Hook Configuration:**
+- Location: `~/.claude/settings.json`
+- Script: `~/.claude/hooks/load-context.sh`
+- Runs on every user prompt submission
+
+**To verify hook is working:**
+```bash
+# Check hook is registered
+cat ~/.claude/settings.json
+
+# Test hook script directly
+bash ~/.claude/hooks/load-context.sh
+
+# In Claude Code, type:
+/hooks
+# Should show: UserPromptSubmit hook registered
+
+# Run with debug logging:
+claude --debug
+# Look for: "Running UserPromptSubmit hook..."
 ```
+
+### Auto-Save Context
+
+Auto-save is triggered by instructions in `~/.claude/CLAUDE.md` that tell Claude to:
+- Save after completing significant tasks
+- Save before conversation ends
+- Save periodically (~30 minutes)
+
+Claude reads these instructions via the hook and follows them.
 
 ## Troubleshooting
 
-**Context not saving?**
-- Check `~/.claude/CLAUDE.md` has auto-save instructions
-- Check `~/.claude/clanker/records/` is writable
+**Hook not loading context?**
+- Verify hook is registered: `cat ~/.claude/settings.json`
+- Test script directly: `bash ~/.claude/hooks/load-context.sh`
+- Check script is executable: `ls -la ~/.claude/hooks/load-context.sh`
+- Run with debug: `claude --debug`
 
-**Can't resume context?**
-- Check file exists: `ls ~/.claude/clanker/records/<folder-name>-latest.md`
-- Try manual load: "Read ~/.claude/clanker/records/<folder-name>-latest.md"
+**Context not saving?**
+- Hook loads the auto-save instructions, but Claude must follow them
+- Check context file was created: `ls ~/.claude/clanker/records/`
+- Try manual save: Ask Claude to save context using the save-context.sh script
 
 **Wrong folder name?**
 - Context saved as basename of current directory
 - Check: `basename $PWD`
 
 **Tests failing?**
-- Make sure you're running inside the Docker container for mount tests
-- Check that all scripts are executable: `chmod +x ~/.claude/clanker/*.sh ~/.claude/clanker/tests/*.sh`
+- Fast tests run on host - should always pass
+- Integration test requires Docker
+- Check that all scripts are executable: `chmod +x ~/.claude/clanker/scripts/*.sh`
 
 ## Development
 
