@@ -34,9 +34,9 @@ if ! grep -q 'SSH_AUTH_SOCK' "$CONFIG"; then
 fi
 
 
-# Run devcontainer with stdin attached
-if ! npx -y @devcontainers/cli exec --workspace-folder . --config "$CONFIG" claude --dangerously-skip-permissions 2>/dev/null </dev/tty; then
+# Run devcontainer with stdin attached, passing any arguments to claude
+if ! npx -y @devcontainers/cli exec --workspace-folder . --config "$CONFIG" claude --dangerously-skip-permissions "$@" 2>/dev/null </dev/tty; then
     echo "Starting devcontainer..."
     npx -y @devcontainers/cli up --workspace-folder . --config "$CONFIG" \
-    && npx -y @devcontainers/cli exec --workspace-folder . --config "$CONFIG" claude --dangerously-skip-permissions </dev/tty
+    && npx -y @devcontainers/cli exec --workspace-folder . --config "$CONFIG" claude --dangerously-skip-permissions "$@" </dev/tty
 fi
