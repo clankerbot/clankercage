@@ -8,6 +8,7 @@ SSH_KEY=""
 GIT_USER_NAME=""
 GIT_USER_EMAIL=""
 GH_TOKEN=""
+GPG_KEY_ID=""
 
 # Parse arguments
 CLAUDE_ARGS=()
@@ -45,6 +46,14 @@ while [[ $# -gt 0 ]]; do
             GH_TOKEN="${1#*=}"
             shift
             ;;
+        --gpg-key-id)
+            GPG_KEY_ID="$2"
+            shift 2
+            ;;
+        --gpg-key-id=*)
+            GPG_KEY_ID="${1#*=}"
+            shift
+            ;;
         *)
             CLAUDE_ARGS+=("$1")
             shift
@@ -69,6 +78,7 @@ if [ ! -f "$SSH_KEY" ]; then
     echo "  --git-user-name <name>   Git user.name to configure in container"
     echo "  --git-user-email <email> Git user.email to configure in container"
     echo "  --gh-token <token>       GitHub token for gh CLI authentication"
+    echo "  --gpg-key-id <id>        GPG key ID for signing commits"
     exit 1
 fi
 
@@ -98,15 +108,18 @@ if grep -q 'claude-code-config.*type=volume' "$CONFIG"; then
     mv "$tmp" "$CONFIG"
 fi
 
-# Add SSH key mount for private repo access
-# First remove any existing SSH key mount, then add the new one
+# Add SSH key mount and optionally GPG directory mount
 tmp=$(mktemp)
 if command -v jq &>/dev/null; then
-    # Remove existing SSH key mounts and add new one
-    jq --arg keypath "$SSH_KEY_PATH" --arg keyname "$SSH_KEY_NAME" '
-        .mounts = [.mounts[] | select(contains(".ssh/") | not)] |
-        .mounts += ["source=\($keypath),target=/home/node/.ssh/\($keyname),type=bind,readonly"]
-    ' "$CONFIG" > "$tmp"
+    # Remove existing SSH key and .gnupg mounts, then add new ones
+    MOUNTS_FILTER='.mounts = [.mounts[] | select((contains(".ssh/") or contains(".gnupg")) | not)]'
+    MOUNTS_ADD=".mounts += [\"source=$SSH_KEY_PATH,target=/home/node/.ssh/$SSH_KEY_NAME,type=bind,readonly\"]"
+
+    if [ -n "$GPG_KEY_ID" ]; then
+        MOUNTS_ADD="$MOUNTS_ADD | .mounts += [\"source=\${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind\"]"
+    fi
+
+    jq "$MOUNTS_FILTER | $MOUNTS_ADD" "$CONFIG" > "$tmp"
 else
     # Fallback without jq - just add the mount if not present
     if ! grep -q "$SSH_KEY_NAME" "$CONFIG"; then
@@ -126,6 +139,12 @@ fi
 
 if [ -n "$GIT_USER_EMAIL" ]; then
     POST_START_COMMANDS+=("git config --global user.email '$GIT_USER_EMAIL'")
+fi
+
+if [ -n "$GPG_KEY_ID" ]; then
+    POST_START_COMMANDS+=("git config --global user.signingkey '$GPG_KEY_ID'")
+    POST_START_COMMANDS+=("git config --global commit.gpgsign true")
+    POST_START_COMMANDS+=("git config --global gpg.program gpg")
 fi
 
 if [ -n "$GH_TOKEN" ]; then
