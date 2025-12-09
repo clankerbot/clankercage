@@ -145,6 +145,8 @@ if [ -n "$GPG_KEY_ID" ]; then
     POST_START_COMMANDS+=("git config --global user.signingkey '$GPG_KEY_ID'")
     POST_START_COMMANDS+=("git config --global commit.gpgsign true")
     POST_START_COMMANDS+=("git config --global gpg.program gpg")
+    # Start gpg-agent - required for GPG signing in container environments
+    POST_START_COMMANDS+=("gpg-connect-agent /bye >/dev/null 2>&1 || true")
 fi
 
 if [ -n "$GH_TOKEN" ]; then
