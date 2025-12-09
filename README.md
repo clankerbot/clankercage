@@ -161,6 +161,13 @@ Done! Copy `~/.claude/` to bring your configuration if desired.
 
 ## Troubleshooting
 
+**SSH not working for private repos?**
+- Ensure your SSH agent is running on the host: `eval "$(ssh-agent -s)"`
+- Add your key: `ssh-add ~/.ssh/id_ed25519`
+- Verify with: `ssh-add -l`
+- The setup script automatically forwards your SSH agent to the container
+- Test inside container: `ssh -T git@github.com`
+
 **Container won't start?**
 - Check Docker is running
 - Try: `docker system prune` (removes old containers)

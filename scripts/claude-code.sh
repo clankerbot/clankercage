@@ -19,6 +19,20 @@ if grep -q 'claude-code-config.*type=volume' "$CONFIG"; then
     mv "$tmp" "$CONFIG"
 fi
 
+# Add SSH agent forwarding for private repo access
+if ! grep -q 'SSH_AUTH_SOCK' "$CONFIG"; then
+    tmp=$(mktemp)
+    # Add SSH_AUTH_SOCK mount and environment variable using jq if available, otherwise sed
+    if command -v jq &>/dev/null; then
+        jq '.mounts += ["source=${localEnv:SSH_AUTH_SOCK},target=/ssh-agent,type=bind"] | .containerEnv.SSH_AUTH_SOCK = "/ssh-agent"' "$CONFIG" > "$tmp"
+    else
+        # Fallback: add mount to existing mounts array and add containerEnv
+        sed '/"mounts":/,/\]/ s|\]|, "source=\${localEnv:SSH_AUTH_SOCK},target=/ssh-agent,type=bind"]|' "$CONFIG" | \
+        sed 's|"mounts"|"containerEnv": { "SSH_AUTH_SOCK": "/ssh-agent" },\n\t"mounts"|' > "$tmp"
+    fi
+    mv "$tmp" "$CONFIG"
+fi
+
 # Run devcontainer with stdin attached
 if ! npx -y @devcontainers/cli exec --workspace-folder . --config "$CONFIG" claude --dangerously-skip-permissions 2>/dev/null </dev/tty; then
     echo "Starting devcontainer..."
