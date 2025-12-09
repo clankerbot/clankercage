@@ -133,7 +133,10 @@ if [ -n "$GH_TOKEN" ]; then
 fi
 
 # Join commands with " && "
-POST_START_CMD=$(IFS=" && "; echo "${POST_START_COMMANDS[*]}")
+POST_START_CMD=$(printf "%s" "${POST_START_COMMANDS[0]}")
+for ((i=1; i<${#POST_START_COMMANDS[@]}; i++)); do
+    POST_START_CMD="$POST_START_CMD && ${POST_START_COMMANDS[$i]}"
+done
 
 # Update postStartCommand in config
 if command -v jq &>/dev/null; then
