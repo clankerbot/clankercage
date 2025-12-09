@@ -5,6 +5,9 @@ CLAUDE_DIR="$HOME/.claude/.devcontainer"
 CONFIG="$CLAUDE_DIR/devcontainer.json"
 DEFAULT_SSH_KEY="$HOME/.ssh/id_ed25519_clanker"
 SSH_KEY=""
+GIT_USER_NAME=""
+GIT_USER_EMAIL=""
+GH_TOKEN=""
 
 # Parse arguments
 CLAUDE_ARGS=()
@@ -16,6 +19,30 @@ while [[ $# -gt 0 ]]; do
             ;;
         --ssh-key-file=*)
             SSH_KEY="${1#*=}"
+            shift
+            ;;
+        --git-user-name)
+            GIT_USER_NAME="$2"
+            shift 2
+            ;;
+        --git-user-name=*)
+            GIT_USER_NAME="${1#*=}"
+            shift
+            ;;
+        --git-user-email)
+            GIT_USER_EMAIL="$2"
+            shift 2
+            ;;
+        --git-user-email=*)
+            GIT_USER_EMAIL="${1#*=}"
+            shift
+            ;;
+        --gh-token)
+            GH_TOKEN="$2"
+            shift 2
+            ;;
+        --gh-token=*)
+            GH_TOKEN="${1#*=}"
             shift
             ;;
         *)
@@ -35,10 +62,13 @@ if [ ! -f "$SSH_KEY" ]; then
     echo "Error: SSH key not found at $SSH_KEY"
     echo "This key is required for accessing private repositories."
     echo ""
-    echo "Usage: $0 [--ssh-key-file <path>] [claude args...]"
+    echo "Usage: $0 [options] [claude args...]"
     echo ""
     echo "Options:"
-    echo "  --ssh-key-file <path>  Path to SSH private key (default: ~/.ssh/id_ed25519_clanker)"
+    echo "  --ssh-key-file <path>    Path to SSH private key (default: ~/.ssh/id_ed25519_clanker)"
+    echo "  --git-user-name <name>   Git user.name to configure in container"
+    echo "  --git-user-email <email> Git user.email to configure in container"
+    echo "  --gh-token <token>       GitHub token for gh CLI authentication"
     exit 1
 fi
 
@@ -87,6 +117,30 @@ else
 fi
 mv "$tmp" "$CONFIG"
 
+# Build the postStartCommand to configure git and gh
+POST_START_COMMANDS=("sudo /usr/local/bin/init-firewall.sh")
+
+if [ -n "$GIT_USER_NAME" ]; then
+    POST_START_COMMANDS+=("git config --global user.name '$GIT_USER_NAME'")
+fi
+
+if [ -n "$GIT_USER_EMAIL" ]; then
+    POST_START_COMMANDS+=("git config --global user.email '$GIT_USER_EMAIL'")
+fi
+
+if [ -n "$GH_TOKEN" ]; then
+    POST_START_COMMANDS+=("echo '$GH_TOKEN' | gh auth login --with-token")
+fi
+
+# Join commands with " && "
+POST_START_CMD=$(IFS=" && "; echo "${POST_START_COMMANDS[*]}")
+
+# Update postStartCommand in config
+if command -v jq &>/dev/null; then
+    tmp=$(mktemp)
+    jq --arg cmd "$POST_START_CMD" '.postStartCommand = $cmd' "$CONFIG" > "$tmp"
+    mv "$tmp" "$CONFIG"
+fi
 
 # Run devcontainer with stdin attached, passing any arguments to claude
 if ! npx -y @devcontainers/cli exec --workspace-folder . --config "$CONFIG" claude --dangerously-skip-permissions "${CLAUDE_ARGS[@]}" 2>/dev/null </dev/tty; then
