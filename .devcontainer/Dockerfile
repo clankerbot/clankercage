@@ -53,16 +53,15 @@ RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/add-domain-to-firewa
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 # Create non-root user 'node' (Playwright image uses 'pwuser', we create 'node' for compatibility)
-ARG USERNAME=node
-RUN useradd -m -s /bin/zsh -u 1000 ${USERNAME} && \
-  echo "${USERNAME} ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/local/bin/add-domain-to-firewall.sh" > /etc/sudoers.d/node-firewall && \
+RUN useradd -m -s /bin/zsh -u 1000 node && \
+  echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/local/bin/add-domain-to-firewall.sh" > /etc/sudoers.d/node-firewall && \
   chmod 0440 /etc/sudoers.d/node-firewall && \
-  usermod -aG docker ${USERNAME} 2>/dev/null || true
+  usermod -aG docker node 2>/dev/null || true
 
 # Persist bash history
 RUN mkdir /commandhistory && \
   touch /commandhistory/.bash_history && \
-  chown -R ${USERNAME} /commandhistory
+  chown -R node /commandhistory
 
 # Set environment variables
 ENV DEVCONTAINER=true
@@ -71,13 +70,13 @@ ENV EDITOR=nano
 ENV VISUAL=nano
 
 # Create workspace and config directories
-RUN mkdir -p /workspace /home/${USERNAME}/.claude && \
-  chown -R ${USERNAME}:${USERNAME} /workspace /home/${USERNAME}/.claude /home/${USERNAME}
+RUN mkdir -p /workspace /home/node/.claude && \
+  chown -R node:node /workspace /home/node/.claude /home/node
 
 WORKDIR /workspace
 
 # Switch to non-root user for remaining setup
-USER ${USERNAME}
+USER node
 
 # Install zsh with oh-my-zsh
 ARG ZSH_IN_DOCKER_VERSION=1.2.0
@@ -90,7 +89,7 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
   -x
 
 # Set up SSH for GitHub access
-RUN mkdir -p /home/${USERNAME}/.ssh && \
-  chmod 700 /home/${USERNAME}/.ssh && \
-  ssh-keyscan github.com >> /home/${USERNAME}/.ssh/known_hosts 2>/dev/null && \
-  chmod 644 /home/${USERNAME}/.ssh/known_hosts
+RUN mkdir -p ~/.ssh && \
+  chmod 700 ~/.ssh && \
+  ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null && \
+  chmod 644 ~/.ssh/known_hosts
