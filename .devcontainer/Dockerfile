@@ -33,15 +33,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   ca-certificates \
   iputils-ping
 
-# Install Docker CLI, git-delta, and cache zsh-in-docker script
+# Install Docker CLI and git-delta
 ARG DOCKER_VERSION=27.3.1
 ARG GIT_DELTA_VERSION=0.18.2
-ARG ZSH_IN_DOCKER_VERSION=1.2.0
 RUN ARCH=$(dpkg --print-architecture) && \
   curl -fsSL "https://download.docker.com/linux/static/stable/$(uname -m)/docker-${DOCKER_VERSION}.tgz" | tar xz --strip-components=1 -C /usr/local/bin docker/docker && \
   curl -fsSL "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" -o /tmp/git-delta.deb && \
-  dpkg -i /tmp/git-delta.deb && rm /tmp/git-delta.deb && \
-  curl -fsSL "https://github.com/deluan/zsh-in-docker/releases/download/v${ZSH_IN_DOCKER_VERSION}/zsh-in-docker.sh" -o /tmp/zsh-in-docker.sh
+  dpkg -i /tmp/git-delta.deb && rm /tmp/git-delta.deb
 
 # Copy firewall scripts early (rarely change, good for caching)
 COPY --chmod=755 init-firewall.sh add-domain-to-firewall.sh /usr/local/bin/
@@ -78,13 +76,10 @@ WORKDIR /workspace
 # Switch to non-root user for remaining setup
 USER node
 
-# Install zsh with oh-my-zsh (using pre-downloaded script) and set up SSH directory
-RUN sh /tmp/zsh-in-docker.sh -- \
-  -p git \
-  -p fzf \
-  -a "source /usr/share/doc/fzf/examples/key-bindings.zsh || true" \
-  -a "source /usr/share/doc/fzf/examples/completion.zsh || true" \
-  -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
-  -x && \
-  rm /tmp/zsh-in-docker.sh && \
+# Install oh-my-zsh and configure shell
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
+  sed -i 's/plugins=(git)/plugins=(git fzf)/' ~/.zshrc && \
+  echo 'source /usr/share/doc/fzf/examples/key-bindings.zsh || true' >> ~/.zshrc && \
+  echo 'source /usr/share/doc/fzf/examples/completion.zsh || true' >> ~/.zshrc && \
+  echo 'export PROMPT_COMMAND="history -a" && export HISTFILE=/commandhistory/.bash_history' >> ~/.zshrc && \
   mkdir -p ~/.ssh && chmod 700 ~/.ssh
