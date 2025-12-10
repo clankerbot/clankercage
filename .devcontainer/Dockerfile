@@ -50,11 +50,13 @@ COPY --chmod=755 init-firewall.sh add-domain-to-firewall.sh /usr/local/bin/
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
   npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
-# Rename existing 'ubuntu' user (UID 1000) to 'node' for devcontainer compatibility
-# The Playwright image comes with 'ubuntu' user at UID 1000, we need 'node' for our devcontainer.json
+# Rename existing UID 1000 user to 'node' for devcontainer compatibility
+# The Playwright image may have 'pwuser' or 'ubuntu' user at UID 1000 depending on version
 # Also set up command history, workspace, and config directories in one layer
-RUN usermod -l node -d /home/node -m ubuntu && \
-  groupmod -n node ubuntu && \
+RUN OLD_USER=$(getent passwd 1000 | cut -d: -f1) && \
+  OLD_GROUP=$(getent group 1000 | cut -d: -f1) && \
+  usermod -l node -d /home/node -m "$OLD_USER" && \
+  groupmod -n node "$OLD_GROUP" && \
   chsh -s /bin/zsh node && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/local/bin/add-domain-to-firewall.sh" > /etc/sudoers.d/node-firewall && \
   chmod 0440 /etc/sudoers.d/node-firewall && \
