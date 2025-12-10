@@ -49,27 +49,23 @@ RUN ARCH=$(dpkg --print-architecture) && \
 COPY init-firewall.sh add-domain-to-firewall.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/add-domain-to-firewall.sh
 
+# Install Claude Code globally as root (simpler, avoids permission issues)
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+
 # Create non-root user 'node' (Playwright image uses 'pwuser', we create 'node' for compatibility)
 ARG USERNAME=node
-RUN useradd -m -s /bin/zsh ${USERNAME} && \
+RUN useradd -m -s /bin/zsh -u 1000 ${USERNAME} && \
   echo "${USERNAME} ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/local/bin/add-domain-to-firewall.sh" > /etc/sudoers.d/node-firewall && \
   chmod 0440 /etc/sudoers.d/node-firewall && \
   usermod -aG docker ${USERNAME} 2>/dev/null || true
 
-# Ensure node user has access to /usr/local/share
-RUN mkdir -p /usr/local/share/npm-global && \
-  chown -R ${USERNAME}:${USERNAME} /usr/local/share
-
 # Persist bash history
-RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
-  && mkdir /commandhistory \
-  && touch /commandhistory/.bash_history \
-  && chown -R ${USERNAME} /commandhistory
+RUN mkdir /commandhistory && \
+  touch /commandhistory/.bash_history && \
+  chown -R ${USERNAME} /commandhistory
 
 # Set environment variables
 ENV DEVCONTAINER=true
-ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
-ENV PATH=$PATH:/usr/local/share/npm-global/bin
 ENV SHELL=/bin/zsh
 ENV EDITOR=nano
 ENV VISUAL=nano
@@ -82,9 +78,6 @@ WORKDIR /workspace
 
 # Switch to non-root user for remaining setup
 USER ${USERNAME}
-
-# Re-declare ARGs needed after USER switch (ARGs go out of scope after USER)
-ARG CLAUDE_CODE_VERSION
 
 # Install zsh with oh-my-zsh
 ARG ZSH_IN_DOCKER_VERSION=1.2.0
@@ -101,8 +94,3 @@ RUN mkdir -p /home/${USERNAME}/.ssh && \
   chmod 700 /home/${USERNAME}/.ssh && \
   ssh-keyscan github.com >> /home/${USERNAME}/.ssh/known_hosts 2>/dev/null && \
   chmod 644 /home/${USERNAME}/.ssh/known_hosts
-
-# Install Claude Code globally with npm cache mount for speed
-# Playwright is already installed in base image, just need to ensure chromium is available
-RUN --mount=type=cache,target=/tmp/.npm-cache,uid=1000,gid=1000 \
-  npm install -g --cache /tmp/.npm-cache @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
