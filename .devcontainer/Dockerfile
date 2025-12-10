@@ -101,5 +101,5 @@ RUN mkdir -p /home/${USERNAME}/.ssh && \
 
 # Install Claude Code globally with npm cache mount for speed
 # Playwright is already installed in base image, just need to ensure chromium is available
-RUN --mount=type=cache,target=/home/${USERNAME}/.npm,uid=1000 \
-  npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+RUN --mount=type=cache,target=/tmp/.npm-cache,uid=1000,gid=1000 \
+  npm install -g --cache /tmp/.npm-cache @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
