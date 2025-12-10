@@ -29,10 +29,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # DL3008: Pin versions in apt-get - not practical for devcontainer
+      # DL3059: Multiple consecutive RUN - intentional for caching
       - name: Run Hadolint
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: .devcontainer/Dockerfile
-          # DL3008: Pin versions in apt-get - not practical for devcontainer
-          # DL3059: Multiple consecutive RUN - intentional for caching
           ignore: DL3008,DL3059
