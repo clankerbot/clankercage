@@ -17,7 +17,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   sudo \
   fzf \
   zsh \
-  man-db \
   unzip \
   gnupg2 \
   gh \
