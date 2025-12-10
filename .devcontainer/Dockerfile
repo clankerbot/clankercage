@@ -27,9 +27,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   aggregate \
   jq \
   nano \
-  vim \
   openssh-client \
-  wget \
   ca-certificates \
   iputils-ping
 
