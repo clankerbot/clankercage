@@ -83,6 +83,9 @@ WORKDIR /workspace
 # Switch to non-root user for remaining setup
 USER ${USERNAME}
 
+# Re-declare ARGs needed after USER switch (ARGs go out of scope after USER)
+ARG CLAUDE_CODE_VERSION
+
 # Install zsh with oh-my-zsh
 ARG ZSH_IN_DOCKER_VERSION=1.2.0
 RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v${ZSH_IN_DOCKER_VERSION}/zsh-in-docker.sh)" -- \
