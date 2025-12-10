@@ -4,14 +4,15 @@ set -e
 CLAUDE_DIR="$HOME/.claude/.devcontainer"
 CONFIG="$CLAUDE_DIR/devcontainer.json"
 VERSION_FILE="$CLAUDE_DIR/.version"
-DEFAULT_SSH_KEY="$HOME/.ssh/id_ed25519_clanker"
-SSH_KEY=""
-GIT_USER_NAME=""
-GIT_USER_EMAIL=""
-GH_TOKEN=""
-GPG_KEY_ID=""
 BASE_URL="https://raw.githubusercontent.com/clankerbot/clanker/main/.devcontainer"
 IMAGE_NAME="ghcr.io/clankerbot/clanker:latest"
+
+# Initialize from environment variables (CLI args override these)
+SSH_KEY="${CLANKER_SSH_KEY:-}"
+GIT_USER_NAME="${CLANKER_GIT_USER_NAME:-}"
+GIT_USER_EMAIL="${CLANKER_GIT_USER_EMAIL:-}"
+GH_TOKEN="${CLANKER_GH_TOKEN:-}"
+GPG_KEY_ID="${CLANKER_GPG_KEY_ID:-}"
 
 # Parse arguments
 CLAUDE_ARGS=()
@@ -64,30 +65,28 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Use default SSH key if not specified
-if [ -z "$SSH_KEY" ]; then
-    SSH_KEY="$DEFAULT_SSH_KEY"
-fi
-
-# Check for required SSH key
-if [ ! -f "$SSH_KEY" ]; then
+# Validate SSH key if provided
+if [ -n "$SSH_KEY" ] && [ ! -f "$SSH_KEY" ]; then
     echo "Error: SSH key not found at $SSH_KEY"
-    echo "This key is required for accessing private repositories."
     echo ""
     echo "Usage: $0 [options] [claude args...]"
     echo ""
     echo "Options:"
-    echo "  --ssh-key-file <path>    Path to SSH private key (default: ~/.ssh/id_ed25519_clanker)"
-    echo "  --git-user-name <name>   Git user.name to configure in container"
-    echo "  --git-user-email <email> Git user.email to configure in container"
-    echo "  --gh-token <token>       GitHub token for gh CLI authentication"
-    echo "  --gpg-key-id <id>        GPG key ID for signing commits"
+    echo "  --ssh-key-file <path>    Path to SSH private key (or set CLANKER_SSH_KEY)"
+    echo "  --git-user-name <name>   Git user.name (or set CLANKER_GIT_USER_NAME)"
+    echo "  --git-user-email <email> Git user.email (or set CLANKER_GIT_USER_EMAIL)"
+    echo "  --gh-token <token>       GitHub token (or set CLANKER_GH_TOKEN)"
+    echo "  --gpg-key-id <id>        GPG key ID (or set CLANKER_GPG_KEY_ID)"
     exit 1
 fi
 
-# Get absolute path and filename for the SSH key
-SSH_KEY_PATH=$(cd "$(dirname "$SSH_KEY")" && pwd)/$(basename "$SSH_KEY")
-SSH_KEY_NAME=$(basename "$SSH_KEY")
+# Get absolute path and filename for the SSH key (if provided)
+SSH_KEY_PATH=""
+SSH_KEY_NAME=""
+if [ -n "$SSH_KEY" ]; then
+    SSH_KEY_PATH=$(cd "$(dirname "$SSH_KEY")" && pwd)/$(basename "$SSH_KEY")
+    SSH_KEY_NAME=$(basename "$SSH_KEY")
+fi
 
 # Get latest commit SHA from GitHub API
 get_remote_commit() {
@@ -139,26 +138,39 @@ if grep -q 'claude-code-config.*type=volume' "$CONFIG"; then
     mv "$tmp" "$CONFIG"
 fi
 
-# Generate SSH config with the correct key path
-generate_ssh_config
-SSH_CONFIG_PATH="$CLAUDE_DIR/ssh_config"
-
 # Add SSH key, SSH config, and optionally GPG directory mounts
 tmp=$(mktemp)
 if command -v jq &>/dev/null; then
-    # Remove existing SSH key and .gnupg mounts, then add new ones
+    # Remove existing SSH key and .gnupg mounts
     MOUNTS_FILTER='.mounts = [.mounts[] | select((contains(".ssh/") or contains(".gnupg")) | not)]'
-    MOUNTS_ADD=".mounts += [\"source=$SSH_KEY_PATH,target=/home/node/.ssh/$SSH_KEY_NAME,type=bind,readonly\"]"
-    MOUNTS_ADD="$MOUNTS_ADD | .mounts += [\"source=$SSH_CONFIG_PATH,target=/home/node/.ssh/config,type=bind,readonly\"]"
+    MOUNTS_ADD=""
 
-    if [ -n "$GPG_KEY_ID" ]; then
-        MOUNTS_ADD="$MOUNTS_ADD | .mounts += [\"source=\${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind\"]"
+    # Add SSH mounts only if SSH key is provided
+    if [ -n "$SSH_KEY" ]; then
+        generate_ssh_config
+        SSH_CONFIG_PATH="$CLAUDE_DIR/ssh_config"
+        MOUNTS_ADD=".mounts += [\"source=$SSH_KEY_PATH,target=/home/node/.ssh/$SSH_KEY_NAME,type=bind,readonly\"]"
+        MOUNTS_ADD="$MOUNTS_ADD | .mounts += [\"source=$SSH_CONFIG_PATH,target=/home/node/.ssh/config,type=bind,readonly\"]"
     fi
 
-    jq "$MOUNTS_FILTER | $MOUNTS_ADD" "$CONFIG" > "$tmp"
+    if [ -n "$GPG_KEY_ID" ]; then
+        if [ -n "$MOUNTS_ADD" ]; then
+            MOUNTS_ADD="$MOUNTS_ADD | .mounts += [\"source=\${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind\"]"
+        else
+            MOUNTS_ADD=".mounts += [\"source=\${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind\"]"
+        fi
+    fi
+
+    if [ -n "$MOUNTS_ADD" ]; then
+        jq "$MOUNTS_FILTER | $MOUNTS_ADD" "$CONFIG" > "$tmp"
+    else
+        jq "$MOUNTS_FILTER" "$CONFIG" > "$tmp"
+    fi
 else
-    # Fallback without jq - just add the mounts if not present
-    if ! grep -q "$SSH_KEY_NAME" "$CONFIG"; then
+    # Fallback without jq - just add SSH mounts if key provided and not present
+    if [ -n "$SSH_KEY" ] && ! grep -q "$SSH_KEY_NAME" "$CONFIG"; then
+        generate_ssh_config
+        SSH_CONFIG_PATH="$CLAUDE_DIR/ssh_config"
         sed '/"mounts":/,/\]/ s|\]|, "source='"$SSH_KEY_PATH"',target=/home/node/.ssh/'"$SSH_KEY_NAME"',type=bind,readonly", "source='"$SSH_CONFIG_PATH"',target=/home/node/.ssh/config,type=bind,readonly"]|' "$CONFIG" > "$tmp"
     else
         cp "$CONFIG" "$tmp"
