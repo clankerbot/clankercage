@@ -3,12 +3,14 @@ set -e
 
 CLAUDE_DIR="$HOME/.claude/.devcontainer"
 CONFIG="$CLAUDE_DIR/devcontainer.json"
+VERSION_FILE="$CLAUDE_DIR/.version"
 DEFAULT_SSH_KEY="$HOME/.ssh/id_ed25519_clanker"
 SSH_KEY=""
 GIT_USER_NAME=""
 GIT_USER_EMAIL=""
 GH_TOKEN=""
 GPG_KEY_ID=""
+BASE_URL="https://raw.githubusercontent.com/clankerbot/clanker/main/.devcontainer"
 
 # Parse arguments
 CLAUDE_ARGS=()
@@ -86,13 +88,43 @@ fi
 SSH_KEY_PATH=$(cd "$(dirname "$SSH_KEY")" && pwd)/$(basename "$SSH_KEY")
 SSH_KEY_NAME=$(basename "$SSH_KEY")
 
-# Download devcontainer files if missing (from clankerbot/clanker repo)
-if [ ! -f "$CONFIG" ]; then
+# Get latest commit SHA from GitHub API
+get_remote_commit() {
+    curl -fsSL "https://api.github.com/repos/clankerbot/clanker/commits/main" 2>/dev/null | grep '"sha"' | head -1 | cut -d'"' -f4
+}
+
+download_devcontainer_files() {
     mkdir -p "$CLAUDE_DIR"
-    curl -fsSL https://raw.githubusercontent.com/clankerbot/clanker/main/.devcontainer/devcontainer.json -o "$CONFIG"
-    curl -fsSL https://raw.githubusercontent.com/clankerbot/clanker/main/.devcontainer/Dockerfile -o "$CLAUDE_DIR/Dockerfile"
-    curl -fsSL https://raw.githubusercontent.com/clankerbot/clanker/main/.devcontainer/init-firewall.sh -o "$CLAUDE_DIR/init-firewall.sh"
-    curl -fsSL https://raw.githubusercontent.com/clankerbot/clanker/main/.devcontainer/ssh_config -o "$CLAUDE_DIR/ssh_config"
+    curl -fsSL "$BASE_URL/devcontainer.json" -o "$CONFIG"
+    curl -fsSL "$BASE_URL/Dockerfile" -o "$CLAUDE_DIR/Dockerfile"
+    curl -fsSL "$BASE_URL/init-firewall.sh" -o "$CLAUDE_DIR/init-firewall.sh"
+    curl -fsSL "$BASE_URL/ssh_config" -o "$CLAUDE_DIR/ssh_config"
+}
+
+# Download devcontainer files if missing or outdated
+NEEDS_REBUILD=false
+REMOTE_COMMIT=$(get_remote_commit)
+LOCAL_COMMIT=""
+if [ -f "$VERSION_FILE" ]; then
+    LOCAL_COMMIT=$(cat "$VERSION_FILE")
+fi
+
+if [ ! -f "$CONFIG" ]; then
+    echo "Downloading devcontainer files..."
+    download_devcontainer_files
+    echo "$REMOTE_COMMIT" > "$VERSION_FILE"
+    NEEDS_REBUILD=true
+elif [ "$REMOTE_COMMIT" != "$LOCAL_COMMIT" ]; then
+    echo "New version detected (${REMOTE_COMMIT:0:7}), updating devcontainer files..."
+    download_devcontainer_files
+    echo "$REMOTE_COMMIT" > "$VERSION_FILE"
+    NEEDS_REBUILD=true
+
+    # Remove old containers to force rebuild
+    if command -v docker &>/dev/null; then
+        echo "Removing old containers..."
+        docker rm -f $(docker ps -aq --filter "label=devcontainer.local_folder=$HOME/.claude") 2>/dev/null || true
+    fi
 fi
 
 # Update SSH config to use the specified key name
