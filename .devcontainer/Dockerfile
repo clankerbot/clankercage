@@ -31,21 +31,25 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   ca-certificates \
   iputils-ping
 
-# Install Docker CLI and git-delta
+# Install Docker CLI, git-delta, and uv (Python package manager)
 ARG DOCKER_VERSION=27.3.1
 ARG GIT_DELTA_VERSION=0.18.2
+ARG UV_VERSION=0.5.11
 RUN ARCH=$(dpkg --print-architecture) && \
   curl -fsSL "https://download.docker.com/linux/static/stable/$(uname -m)/docker-${DOCKER_VERSION}.tgz" | tar xz --strip-components=1 -C /usr/local/bin docker/docker && \
   curl -fsSL "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" -o /tmp/git-delta.deb && \
-  dpkg -i /tmp/git-delta.deb && rm /tmp/git-delta.deb
+  dpkg -i /tmp/git-delta.deb && rm /tmp/git-delta.deb && \
+  curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | sh && \
+  mv /root/.local/bin/uv /usr/local/bin/ && \
+  mv /root/.local/bin/uvx /usr/local/bin/
 
 # Copy firewall scripts, utilities, and domain whitelist
 COPY --chmod=755 init-firewall.sh add-domain-to-firewall.sh safe-rm /usr/local/bin/
 COPY whitelisted-domains.txt /usr/local/share/whitelisted-domains.txt
 
-# Install Claude Code globally as root (simpler, avoids permission issues)
+# Install pnpm and Claude Code globally as root
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-  npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+  npm install -g pnpm @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 # Rename existing UID 1000 user to 'node' for devcontainer compatibility
 # The Playwright image may have 'pwuser' or 'ubuntu' user at UID 1000 depending on version

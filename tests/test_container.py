@@ -27,7 +27,7 @@ def describe_container():
     @pytest.mark.integration
     def it_has_required_tools(devcontainer: DevContainer):
         """Verify that required development tools are installed."""
-        tools = ["git", "node", "npm", "docker", "gh", "jq", "curl"]
+        tools = ["git", "node", "npm", "pnpm", "uv", "uvx", "docker", "gh", "jq", "curl"]
 
         for tool in tools:
             result = devcontainer.exec(f"which {tool}", timeout=10)
