@@ -58,7 +58,10 @@ jobs:
 
       - name: Test - docker socket access works
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock clanker-test:latest docker ps
+          # Get the docker socket's group ID on the host
+          DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+          # Run with that group added so the node user can access the socket
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock --group-add $DOCKER_GID clanker-test:latest docker ps
 
       - name: Test - firewall scripts exist
         run: |
