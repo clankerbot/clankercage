@@ -33,12 +33,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   wget \
   ca-certificates
 
-# Install Docker CLI and git-delta in one layer (parallel downloads)
+# Install Docker CLI, git-delta, and cache zsh-in-docker script (parallel downloads)
 ARG DOCKER_VERSION=27.3.1
 ARG GIT_DELTA_VERSION=0.18.2
+ARG ZSH_IN_DOCKER_VERSION=1.2.0
 RUN ARCH=$(dpkg --print-architecture) && \
   curl -fsSL "https://download.docker.com/linux/static/stable/$(uname -m)/docker-${DOCKER_VERSION}.tgz" -o /tmp/docker.tgz & \
   wget -q "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" -O /tmp/git-delta.deb & \
+  wget -q "https://github.com/deluan/zsh-in-docker/releases/download/v${ZSH_IN_DOCKER_VERSION}/zsh-in-docker.sh" -O /tmp/zsh-in-docker.sh & \
   wait && \
   tar xzf /tmp/docker.tgz --strip-components=1 -C /usr/local/bin docker/docker && \
   dpkg -i /tmp/git-delta.deb && \
@@ -77,13 +79,13 @@ WORKDIR /workspace
 # Switch to non-root user for remaining setup
 USER node
 
-# Install zsh with oh-my-zsh and set up SSH directory
-ARG ZSH_IN_DOCKER_VERSION=1.2.0
-RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v${ZSH_IN_DOCKER_VERSION}/zsh-in-docker.sh)" -- \
+# Install zsh with oh-my-zsh (using pre-downloaded script) and set up SSH directory
+RUN sh /tmp/zsh-in-docker.sh -- \
   -p git \
   -p fzf \
   -a "source /usr/share/doc/fzf/examples/key-bindings.zsh || true" \
   -a "source /usr/share/doc/fzf/examples/completion.zsh || true" \
   -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
   -x && \
+  rm /tmp/zsh-in-docker.sh && \
   mkdir -p ~/.ssh && chmod 700 ~/.ssh
