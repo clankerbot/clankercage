@@ -11,6 +11,7 @@ GIT_USER_EMAIL=""
 GH_TOKEN=""
 GPG_KEY_ID=""
 BASE_URL="https://raw.githubusercontent.com/clankerbot/clanker/main/.devcontainer"
+IMAGE_NAME="ghcr.io/clankerbot/clanker:latest"
 
 # Parse arguments
 CLAUDE_ARGS=()
@@ -96,13 +97,19 @@ get_remote_commit() {
 download_devcontainer_files() {
     mkdir -p "$CLAUDE_DIR"
     curl -fsSL "$BASE_URL/devcontainer.json" -o "$CONFIG"
-    curl -fsSL "$BASE_URL/Dockerfile" -o "$CLAUDE_DIR/Dockerfile"
-    curl -fsSL "$BASE_URL/init-firewall.sh" -o "$CLAUDE_DIR/init-firewall.sh"
-    curl -fsSL "$BASE_URL/ssh_config" -o "$CLAUDE_DIR/ssh_config"
+}
+
+generate_ssh_config() {
+    cat > "$CLAUDE_DIR/ssh_config" << EOF
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile /home/node/.ssh/$SSH_KEY_NAME
+  IdentitiesOnly yes
+EOF
 }
 
 # Download devcontainer files if missing or outdated
-NEEDS_REBUILD=false
 REMOTE_COMMIT=$(get_remote_commit)
 LOCAL_COMMIT=""
 if [ -f "$VERSION_FILE" ]; then
@@ -113,24 +120,19 @@ if [ ! -f "$CONFIG" ]; then
     echo "Downloading devcontainer files..."
     download_devcontainer_files
     echo "$REMOTE_COMMIT" > "$VERSION_FILE"
-    NEEDS_REBUILD=true
+    echo "Pulling Docker image..."
+    docker pull "$IMAGE_NAME"
 elif [ "$REMOTE_COMMIT" != "$LOCAL_COMMIT" ]; then
-    echo "New version detected (${REMOTE_COMMIT:0:7}), updating devcontainer files..."
+    echo "New version detected (${REMOTE_COMMIT:0:7}), updating..."
     download_devcontainer_files
     echo "$REMOTE_COMMIT" > "$VERSION_FILE"
-    NEEDS_REBUILD=true
 
-    # Remove old containers to force rebuild (all devcontainers using our config)
-    if command -v docker &>/dev/null; then
-        echo "Removing old containers..."
-        docker rm -f $(docker ps -aq --filter "label=devcontainer.config_file=$CONFIG") 2>/dev/null || true
-    fi
-fi
+    # Pull latest image and remove old containers
+    echo "Pulling latest Docker image..."
+    docker pull "$IMAGE_NAME"
 
-# Update SSH config to use the specified key name
-if [ "$SSH_KEY_NAME" != "id_ed25519_clanker" ]; then
-    sed -i.bak "s|id_ed25519_clanker|$SSH_KEY_NAME|g" "$CLAUDE_DIR/ssh_config"
-    rm -f "$CLAUDE_DIR/ssh_config.bak"
+    echo "Removing old containers..."
+    docker rm -f $(docker ps -aq --filter "label=devcontainer.config_file=$CONFIG") 2>/dev/null || true
 fi
 
 # Replace .claude docker volume with bind mount
@@ -140,12 +142,17 @@ if grep -q 'claude-code-config.*type=volume' "$CONFIG"; then
     mv "$tmp" "$CONFIG"
 fi
 
-# Add SSH key mount and optionally GPG directory mount
+# Generate SSH config with the correct key path
+generate_ssh_config
+SSH_CONFIG_PATH="$CLAUDE_DIR/ssh_config"
+
+# Add SSH key, SSH config, and optionally GPG directory mounts
 tmp=$(mktemp)
 if command -v jq &>/dev/null; then
     # Remove existing SSH key and .gnupg mounts, then add new ones
     MOUNTS_FILTER='.mounts = [.mounts[] | select((contains(".ssh/") or contains(".gnupg")) | not)]'
     MOUNTS_ADD=".mounts += [\"source=$SSH_KEY_PATH,target=/home/node/.ssh/$SSH_KEY_NAME,type=bind,readonly\"]"
+    MOUNTS_ADD="$MOUNTS_ADD | .mounts += [\"source=$SSH_CONFIG_PATH,target=/home/node/.ssh/config,type=bind,readonly\"]"
 
     if [ -n "$GPG_KEY_ID" ]; then
         MOUNTS_ADD="$MOUNTS_ADD | .mounts += [\"source=\${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind\"]"
@@ -153,9 +160,9 @@ if command -v jq &>/dev/null; then
 
     jq "$MOUNTS_FILTER | $MOUNTS_ADD" "$CONFIG" > "$tmp"
 else
-    # Fallback without jq - just add the mount if not present
+    # Fallback without jq - just add the mounts if not present
     if ! grep -q "$SSH_KEY_NAME" "$CONFIG"; then
-        sed '/"mounts":/,/\]/ s|\]|, "source='"$SSH_KEY_PATH"',target=/home/node/.ssh/'"$SSH_KEY_NAME"',type=bind,readonly"]|' "$CONFIG" > "$tmp"
+        sed '/"mounts":/,/\]/ s|\]|, "source='"$SSH_KEY_PATH"',target=/home/node/.ssh/'"$SSH_KEY_NAME"',type=bind,readonly", "source='"$SSH_CONFIG_PATH"',target=/home/node/.ssh/config,type=bind,readonly"]|' "$CONFIG" > "$tmp"
     else
         cp "$CONFIG" "$tmp"
     fi

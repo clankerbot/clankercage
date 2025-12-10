@@ -19,6 +19,7 @@ bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts
 ```
 
 This script:
+- Pulls the pre-built Docker image from GitHub Container Registry
 - Downloads devcontainer configuration files
 - Converts Claude Code's docker volume to bind mount
 - Starts the devcontainer with proper permissions
@@ -32,11 +33,9 @@ After running the setup script:
 
 ```
 ~/.claude/
-├── .devcontainer/           # Docker configuration (downloaded by setup script)
-│   ├── devcontainer.json
-│   ├── Dockerfile
-│   ├── init-firewall.sh
-│   └── add-domain-to-firewall.sh
+├── .devcontainer/           # Configuration (managed by setup script)
+│   ├── devcontainer.json    # Downloaded from repo
+│   └── ssh_config           # Generated with your SSH key path
 └── .allowed-browser-domains # Approved domains for browser automation
 ```
 

@@ -97,8 +97,7 @@ RUN mkdir -p /home/node/.ssh && \
   ssh-keyscan github.com >> /home/node/.ssh/known_hosts 2>/dev/null && \
   chmod 644 /home/node/.ssh/known_hosts
 
-# Copy SSH config for GitHub
-COPY --chown=node:node ssh_config /home/node/.ssh/config
+# SSH config will be mounted at runtime with the correct key path
 
 # Copy and set up firewall scripts
 COPY init-firewall.sh add-domain-to-firewall.sh /usr/local/bin/
