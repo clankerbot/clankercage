@@ -12,7 +12,10 @@
 - [x] CI tests for container - DONE (test-container.yml merged)
 - [x] Fix cache busting - DONE (Dockerfile hash in cache key)
 - [ ] Automerge on CI check pass - configure GitHub branch protection + auto-merge
-- [ ] Linting - add linting workflow (shellcheck for scripts, hadolint for Dockerfile)
+- [x] Linting - DONE (lint.yml workflow added)
+  - [x] ShellCheck: passing with warning severity
+  - [ ] Hadolint: set to continue-on-error (warnings visible but non-blocking)
+    - Need to review output and fix or ignore specific rules
 
 ## GitHub Auth
 - [x] Logout thekevinscott from gh CLI - DONE
