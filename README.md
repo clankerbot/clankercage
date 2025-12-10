@@ -41,23 +41,6 @@ After running the setup script:
 
 Clean and minimal - just the devcontainer config.
 
-## Plugin Architecture
-
-Clanker works with Claude Code plugins for extended functionality:
-
-### [scribble-pad](https://github.com/thekevinscott/scribble-pad)
-Context management plugin:
-- `/save [name]` - Save conversation context
-- `/load [name]` - Load previous conversation
-- Auto-load on session start
-
-### [browser-fallback](https://github.com/thekevinscott/browser-fallback)
-Browser automation plugin:
-- `/browse [url]` - Automate browser with Playwright
-- Automatic WebFetch fallback hook
-- Handles JavaScript-heavy sites
-- Uses domain approval system (see below)
-
 ## Installation
 
 ### 1. Run Setup Script
@@ -65,47 +48,6 @@ Browser automation plugin:
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts/claude-code.sh)
 ```
-
-### 2. Install Plugins (Optional)
-
-```bash
-# Add plugin marketplaces
-/plugin marketplace add thekevinscott/scribble-pad
-/plugin marketplace add thekevinscott/browser-fallback
-
-# Install plugins
-/plugin install scribble-pad@scribble-pad
-/plugin install browser-fallback@browser-fallback
-```
-
-No repos to clone - everything installs directly from GitHub!
-
-## Testing
-
-Run automated test suite:
-
-```bash
-# Fast tests (run on host)
-bash ~/.claude/clanker/scripts/run-tests.sh
-
-# Integration tests (starts container)
-bash ~/.claude/clanker/scripts/test-container.sh
-
-# Python tests (if installed)
-cd ~/.claude/clanker
-make test
-```
-
-**Fast Tests** (validate host setup):
-- ✓ Directory structure exists
-- ✓ Scripts are executable
-- ✓ Files are writable
-
-**Integration Test** (validates container):
-- ✓ devcontainer.json is valid
-- ✓ Container starts successfully
-- ✓ Bind mount works correctly
-- ✓ Tests pass inside container
 
 ## How It Works
 
@@ -136,15 +78,6 @@ This makes `~/.claude` accessible from both host and container, enabling:
 - Portable configuration across machines
 - Direct file editing from host
 - No docker volume complexity
-
-### Plugin Integration
-
-Plugins use the Claude Code plugin system:
-- Commands defined in `commands/*.md`
-- Hooks defined in `hooks/hooks.json`
-- Scripts in `scripts/` directory
-
-Clanker provides the infrastructure; plugins provide the functionality.
 
 ### Domain Approval System
 
@@ -182,12 +115,6 @@ scripts/approve-domain.sh example.com --check-only
 ```bash
 # Run the setup script
 bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts/claude-code.sh)
-
-# Install plugins (optional)
-/plugin marketplace add thekevinscott/scribble-pad
-/plugin marketplace add thekevinscott/browser-fallback
-/plugin install scribble-pad@scribble-pad
-/plugin install browser-fallback@browser-fallback
 ```
 
 Done! Copy `~/.claude/` to bring your configuration if desired.
@@ -210,10 +137,6 @@ Done! Copy `~/.claude/` to bring your configuration if desired.
 - Clone the repo: `git clone https://github.com/clankerbot/clanker.git`
 - Run tests: `bash clanker/scripts/run-tests.sh`
 
-**Plugins not loading?**
-- Run: `/plugin list` to see installed plugins
-- Check plugin directories exist
-- Verify `plugin.json` is valid JSON
 
 ## Development
 
