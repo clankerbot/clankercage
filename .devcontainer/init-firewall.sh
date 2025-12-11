@@ -2,6 +2,11 @@
 set -euo pipefail  # Exit on error, undefined vars, and pipeline failures
 IFS=$'\n\t'       # Stricter word splitting
 
+# Disable IPv6 to prevent firewall bypass
+# IPv6 traffic would completely bypass our iptables rules since we only configure IPv4
+sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null
+sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null
+
 # Parse arguments
 VERBOSE=false
 for arg in "$@"; do
