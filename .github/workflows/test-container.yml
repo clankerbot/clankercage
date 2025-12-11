@@ -69,6 +69,9 @@ jobs:
           docker run --rm clanker-test:latest ls -la /usr/local/bin/add-domain-to-firewall.sh
           docker run --rm clanker-test:latest ls -la /usr/local/bin/safe-rm
 
+      - name: Test - GPG setup script exists
+        run: docker run --rm clanker-test:latest ls -la /usr/local/bin/setup-gpg.sh
+
       - name: Test - whitelisted domains file exists
         run: docker run --rm clanker-test:latest cat /usr/local/share/whitelisted-domains.txt | head -20
 

@@ -45,8 +45,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 # Enable pnpm via corepack (https://pnpm.io/docker)
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy firewall scripts, utilities, and domain whitelist
-COPY --chmod=755 init-firewall.sh add-domain-to-firewall.sh safe-rm /usr/local/bin/
+# Copy firewall scripts, utilities, GPG setup, and domain whitelist
+COPY --chmod=755 init-firewall.sh add-domain-to-firewall.sh safe-rm setup-gpg.sh /usr/local/bin/
 COPY whitelisted-domains.txt /usr/local/share/whitelisted-domains.txt
 
 # Install Claude Code globally as root
