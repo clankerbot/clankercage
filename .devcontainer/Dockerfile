@@ -1,5 +1,7 @@
 # Use Playwright base image which includes Node.js, Chromium, and all browser dependencies pre-installed
-FROM mcr.microsoft.com/playwright:v1.57.0-noble
+# Image is pinned by digest for supply chain security (prevents tag mutation attacks)
+# To update: docker pull mcr.microsoft.com/playwright:v1.57.0-noble && docker inspect --format='{{index .RepoDigests 0}}'
+FROM mcr.microsoft.com/playwright:v1.57.0-noble@sha256:81bcb939e5a6424ba74d35f18d829c5979d9cdb081c14b99bfde6e896c631823
 
 ARG TZ
 ENV TZ="$TZ"
