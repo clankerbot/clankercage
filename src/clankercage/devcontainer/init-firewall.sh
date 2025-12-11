@@ -19,6 +19,20 @@ log() {
     fi
 }
 
+# Disable IPv6 to prevent firewall bypass
+# IPv6 traffic would bypass our IPv4-only iptables rules
+log "Disabling IPv6..."
+sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
+sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
+
+# Also block IPv6 at the firewall level as defense in depth
+if command -v ip6tables >/dev/null 2>&1; then
+    log "Setting IPv6 firewall to DROP all..."
+    ip6tables -P INPUT DROP 2>/dev/null || true
+    ip6tables -P FORWARD DROP 2>/dev/null || true
+    ip6tables -P OUTPUT DROP 2>/dev/null || true
+fi
+
 # 1. Extract Docker DNS info BEFORE any flushing
 DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
 

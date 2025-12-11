@@ -3,7 +3,10 @@
   "image": "ghcr.io/clankerbot/clankercage:latest",
   "runArgs": [
     "--cap-add=NET_ADMIN",
-    "--cap-add=NET_RAW"
+    "--cap-add=NET_RAW",
+    "--memory=8g",
+    "--cpus=4",
+    "--pids-limit=500"
   ],
   "customizations": {
     "vscode": {
