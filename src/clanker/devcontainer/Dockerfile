@@ -89,13 +89,11 @@ USER node
 # Install oh-my-zsh and configure shell
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
   mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
-  cat >> ~/.zshrc << 'EOF'
-plugins=(git fzf)
-source /usr/share/doc/fzf/examples/key-bindings.zsh 2>/dev/null || true
-source /usr/share/doc/fzf/examples/completion.zsh 2>/dev/null || true
-export PROMPT_COMMAND="history -a"
-export HISTFILE=/commandhistory/.bash_history
-EOF
+  echo 'plugins=(git fzf)' >> ~/.zshrc && \
+  echo 'source /usr/share/doc/fzf/examples/key-bindings.zsh 2>/dev/null || true' >> ~/.zshrc && \
+  echo 'source /usr/share/doc/fzf/examples/completion.zsh 2>/dev/null || true' >> ~/.zshrc && \
+  echo 'export PROMPT_COMMAND="history -a"' >> ~/.zshrc && \
+  echo 'export HISTFILE=/commandhistory/.bash_history' >> ~/.zshrc
 
 # Health check to verify Claude Code is functional
 HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
