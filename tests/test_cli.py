@@ -347,3 +347,63 @@ def describe_ssh():
         )
 
 
+def run_claude(
+    project_dir: Path,
+    claude_args: list[str],
+    timeout: int = 120,
+) -> subprocess.CompletedProcess:
+    """Run clankercage with claude (not --shell) in a given project directory."""
+    cmd = ["uv", "run", "clankercage"] + claude_args
+
+    return subprocess.run(
+        cmd,
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def describe_claude_flag_passthrough():
+    """Tests for passing arbitrary flags to claude."""
+
+    @pytest.mark.integration
+    @pytest.mark.claude
+    @pytest.mark.skip(reason="Requires Claude API key and writable .claude directory - run manually")
+    def it_passes_continue_flag_to_claude(workspace_path: Path):
+        """Verify that --continue flag is passed through to claude.
+
+        Test scenario:
+        1. Run claude with prompt "what is 1+1"
+        2. Run with --continue and ask to add 1 again
+        3. Result should be 3 (proving conversation continuity)
+
+        Note: This test is skipped in CI because it requires:
+        - A valid ANTHROPIC_API_KEY
+        - Writable .claude directory (currently mounted read-only for security)
+        """
+        # First run - ask 1+1
+        result1 = run_claude(
+            workspace_path,
+            ["--print", "-p", "what is 1+1? Reply with just the number."],
+            timeout=180,
+        )
+
+        assert result1.returncode == 0, f"First claude run failed: {result1.stderr}"
+        assert "2" in result1.stdout, (
+            f"Expected '2' in first response: {result1.stdout}"
+        )
+
+        # Second run with --continue - add 1 again
+        result2 = run_claude(
+            workspace_path,
+            ["--continue", "--print", "-p", "add 1 to that. Reply with just the number."],
+            timeout=180,
+        )
+
+        assert result2.returncode == 0, f"Second claude run failed: {result2.stderr}"
+        assert "3" in result2.stdout, (
+            f"Expected '3' in continued response (1+1+1=3): {result2.stdout}"
+        )
+
+
