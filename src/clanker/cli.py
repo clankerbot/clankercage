@@ -3,12 +3,32 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
-import urllib.request
+import tempfile
 from pathlib import Path
 
 __all__ = ["main", "install"]
+
+
+def get_embedded_devcontainer_dir() -> Path:
+    """Get the path to embedded devcontainer files in the package."""
+    return Path(__file__).parent / "devcontainer"
+
+
+def extract_devcontainer_to_temp() -> Path:
+    """Extract embedded devcontainer files to a temp directory."""
+    temp_dir = Path(tempfile.mkdtemp(prefix="clanker-"))
+    devcontainer_dir = temp_dir / ".devcontainer"
+    devcontainer_dir.mkdir()
+
+    pkg_dir = get_embedded_devcontainer_dir()
+    for f in pkg_dir.iterdir():
+        if f.is_file() and f.name != "__init__.py" and not f.name.endswith(".pyc"):
+            shutil.copy2(f, devcontainer_dir / f.name)
+
+    return temp_dir
 
 
 def get_docker_socket_gid() -> str | None:
@@ -168,95 +188,38 @@ def main() -> None:
     """
     Main entry point - runs claude-code locally.
 
-    Expects to be run from a directory with .devcontainer/devcontainer.json
-    or from the installed clanker directory.
+    Uses embedded devcontainer files from the package.
+    With --build, builds from Dockerfile. Without, uses pre-built image.
     """
     parser = create_parser()
     args, claude_args = parser.parse_known_args()
     apply_env_defaults(args)
 
-    # Try to find devcontainer.json
-    # 1. Check current directory
-    # 2. Check installed location
-    cwd = Path.cwd()
-    source_config = cwd / ".devcontainer" / "devcontainer.json"
-
-    if not source_config.exists():
-        # Check installed location
-        installed = Path.home() / ".claude" / "clanker" / ".devcontainer" / "devcontainer.json"
-        if installed.exists():
-            source_config = installed
-            cwd = installed.parent.parent
-        else:
-            print("Error: devcontainer.json not found", file=sys.stderr)
-            print("Run from a directory with .devcontainer/devcontainer.json", file=sys.stderr)
-            print("or run 'clanker-install' first.", file=sys.stderr)
-            sys.exit(1)
-
     if args.ssh_key_file and not Path(args.ssh_key_file).exists():
         print(f"Error: SSH key not found at {args.ssh_key_file}", file=sys.stderr)
         sys.exit(1)
 
-    # Setup runtime directory
+    # Extract embedded devcontainer files to temp directory
+    workspace_dir = extract_devcontainer_to_temp()
+    devcontainer_dir = workspace_dir / ".devcontainer"
+    source_config = devcontainer_dir / "devcontainer.json"
+
+    # Setup runtime directory for SSH config etc
     runtime_dir = Path.home() / ".claude" / "clanker-runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
 
     # Load and modify config
     config = json.loads(source_config.read_text())
-    devcontainer_dir = source_config.parent
     config = modify_config(config, args, runtime_dir, devcontainer_dir)
 
-    # Write runtime config
-    if args.build:
-        # For local builds, write config to the actual .devcontainer dir
-        # so Dockerfile context works correctly
-        runtime_config = devcontainer_dir / "devcontainer.runtime.json"
-    else:
-        runtime_config = runtime_dir / "devcontainer.json"
-
+    # Write modified config back to the temp devcontainer dir
+    runtime_config = devcontainer_dir / "devcontainer.json"
     runtime_config.write_text(json.dumps(config, indent=2))
 
-    run_devcontainer(runtime_config, cwd, claude_args)
+    run_devcontainer(runtime_config, workspace_dir, claude_args)
 
 
-# Install command
-INSTALL_DIR = Path.home() / ".claude" / "clanker"
-VERSION_FILE = INSTALL_DIR / ".version"
-BASE_URL = "https://raw.githubusercontent.com/clankerbot/clanker/main"
 IMAGE_NAME = "ghcr.io/clankerbot/clanker:latest"
-
-FILES = [
-    ".devcontainer/devcontainer.json",
-    ".devcontainer/whitelisted-domains.txt",
-]
-
-
-def get_remote_commit() -> str:
-    """Get the latest commit SHA from GitHub API."""
-    try:
-        url = "https://api.github.com/repos/clankerbot/clanker/commits/main"
-        with urllib.request.urlopen(url, timeout=10) as response:
-            data = json.loads(response.read().decode())
-            return data.get("sha", "")
-    except Exception:
-        return ""
-
-
-def download_file(path: str) -> None:
-    """Download a file from the repo."""
-    url = f"{BASE_URL}/{path}"
-    dest = INSTALL_DIR / path
-    dest.parent.mkdir(parents=True, exist_ok=True)
-
-    with urllib.request.urlopen(url, timeout=30) as response:
-        dest.write_bytes(response.read())
-
-
-def download_files() -> None:
-    """Download all required files."""
-    print("Downloading clanker files...")
-    for file in FILES:
-        download_file(file)
 
 
 def pull_docker_image() -> None:
@@ -267,32 +230,13 @@ def pull_docker_image() -> None:
 
 def install() -> None:
     """
-    Install/update clanker files and run claude-code.
+    Pull the Docker image and run claude-code.
 
-    Downloads devcontainer config from GitHub, pulls Docker image,
-    then runs the main command.
+    Devcontainer files are embedded in the package, so no download needed.
+    This entry point just ensures the image is pulled before running.
     """
-    # Check for updates
-    remote_commit = get_remote_commit()
-    local_commit = ""
-
-    if VERSION_FILE.exists():
-        local_commit = VERSION_FILE.read_text().strip()
-
-    needs_install = not INSTALL_DIR.exists() or not (INSTALL_DIR / ".devcontainer" / "devcontainer.json").exists()
-    needs_update = remote_commit and remote_commit != local_commit
-
-    if needs_install:
-        print(f"Installing clanker to {INSTALL_DIR}...")
-        download_files()
-        if remote_commit:
-            VERSION_FILE.write_text(remote_commit)
-        pull_docker_image()
-
-    elif needs_update:
-        print(f"Updating clanker ({local_commit[:7]} -> {remote_commit[:7]})...")
-        download_files()
-        VERSION_FILE.write_text(remote_commit)
+    # Check if we need to pull (skip if --build is in args)
+    if "--build" not in sys.argv:
         pull_docker_image()
 
     # Run main with all arguments

@@ -52,6 +52,3 @@ sync-test.md
 
 # uv
 .python-version
-
-# Runtime devcontainer config (generated)
-devcontainer.runtime.json

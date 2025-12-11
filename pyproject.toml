@@ -53,10 +53,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/clanker"]
+artifacts = ["src/clanker/devcontainer/*"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "src/clanker",
-    ".devcontainer/devcontainer.json",
-    ".devcontainer/whitelisted-domains.txt",
+    "src/clanker/**/*",
 ]

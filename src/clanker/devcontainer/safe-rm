@@ -1,0 +1,23 @@
+#!/bin/bash
+# safe-rm: Wrapper for rm that requires clean git state
+#
+# This script prevents accidental file deletion by requiring all changes
+# to be committed before allowing rm to execute. If not in a git repo,
+# rm proceeds normally.
+#
+# Usage: safe-rm [rm options] <files...>
+
+set -euo pipefail
+
+# Check if we're in a git repository
+if git rev-parse --git-dir > /dev/null 2>&1; then
+    # We're in a git repo - check for uncommitted changes
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "ERROR: Uncommitted changes detected. Please commit before deleting files." >&2
+        echo "Run: git add -A && git commit -m 'checkpoint before deletion'" >&2
+        exit 1
+    fi
+fi
+
+# Pass through to real rm
+exec /bin/rm "$@"
