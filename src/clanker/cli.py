@@ -184,9 +184,23 @@ def run_devcontainer(config_path: Path, repo_root: Path, claude_args: list[str])
         os.execvp("npx", exec_cmd)
 
 
+IMAGE_NAME = "ghcr.io/clankerbot/clanker:latest"
+
+
+def pull_docker_image_if_needed() -> None:
+    """Pull the Docker image if not already present."""
+    result = subprocess.run(
+        ["docker", "image", "inspect", IMAGE_NAME],
+        capture_output=True
+    )
+    if result.returncode != 0:
+        print("Pulling Docker image...")
+        subprocess.run(["docker", "pull", IMAGE_NAME], check=True)
+
+
 def main() -> None:
     """
-    Main entry point - runs claude-code locally.
+    Main entry point - runs Claude Code in a sandboxed devcontainer.
 
     Uses embedded devcontainer files from the package.
     With --build, builds from Dockerfile. Without, uses pre-built image.
@@ -198,6 +212,10 @@ def main() -> None:
     if args.ssh_key_file and not Path(args.ssh_key_file).exists():
         print(f"Error: SSH key not found at {args.ssh_key_file}", file=sys.stderr)
         sys.exit(1)
+
+    # Pull image if not building locally and image doesn't exist
+    if not args.build:
+        pull_docker_image_if_needed()
 
     # Extract embedded devcontainer files to temp directory
     workspace_dir = extract_devcontainer_to_temp()
@@ -219,25 +237,6 @@ def main() -> None:
     run_devcontainer(runtime_config, workspace_dir, claude_args)
 
 
-IMAGE_NAME = "ghcr.io/clankerbot/clanker:latest"
-
-
-def pull_docker_image() -> None:
-    """Pull the latest Docker image."""
-    print("Pulling Docker image...")
-    subprocess.run(["docker", "pull", IMAGE_NAME], check=True)
-
-
 def install() -> None:
-    """
-    Pull the Docker image and run claude-code.
-
-    Devcontainer files are embedded in the package, so no download needed.
-    This entry point just ensures the image is pulled before running.
-    """
-    # Check if we need to pull (skip if --build is in args)
-    if "--build" not in sys.argv:
-        pull_docker_image()
-
-    # Run main with all arguments
+    """Alias for main() - kept for backwards compatibility."""
     main()
