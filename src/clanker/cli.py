@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-__all__ = ["main", "install"]
+__all__ = ["main", "shell_remote"]
 
 
 def get_embedded_devcontainer_dir() -> Path:
@@ -246,6 +246,32 @@ def warn_if_ssh_mount_missing(args: argparse.Namespace, project_dir: Path) -> No
         )
 
 
+def check_docker_accessible() -> None:
+    """Check if Docker is running and accessible. Exit with error if not."""
+    result = subprocess.run(
+        ["docker", "info"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(
+            "\n"
+            "╔════════════════════════════════════════════════════════════════╗\n"
+            "║  ERROR: Docker is not running or not accessible               ║\n"
+            "╠════════════════════════════════════════════════════════════════╣\n"
+            "║  Clanker requires Docker to run.                              ║\n"
+            "║                                                                ║\n"
+            "║  Please ensure:                                               ║\n"
+            "║    1. Docker is installed                                     ║\n"
+            "║    2. Docker daemon is running                                ║\n"
+            "║    3. You have permission to access Docker                    ║\n"
+            "║       (try: sudo usermod -aG docker $USER)                    ║\n"
+            "╚════════════════════════════════════════════════════════════════╝\n",
+            file=sys.stderr
+        )
+        sys.exit(1)
+
+
 def pull_docker_image_if_needed() -> None:
     """Pull the Docker image if not already present."""
     result = subprocess.run(
@@ -271,6 +297,9 @@ def main() -> None:
     if args.ssh_key_file and not Path(args.ssh_key_file).exists():
         print(f"Error: SSH key not found at {args.ssh_key_file}", file=sys.stderr)
         sys.exit(1)
+
+    # Check Docker is running before proceeding
+    check_docker_accessible()
 
     # Pull image if not building locally and image doesn't exist
     if not args.build:
@@ -302,6 +331,6 @@ def main() -> None:
     run_devcontainer(runtime_config, cache_dir, project_dir, claude_args, args.shell)
 
 
-def install() -> None:
-    """Alias for main() - kept for backwards compatibility."""
+def shell_remote() -> None:
+    """Alias for main() - for clanker-shell-remote entry point."""
     main()

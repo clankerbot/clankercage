@@ -27,8 +27,8 @@ Homepage = "https://github.com/clankerbot/clanker"
 Repository = "https://github.com/clankerbot/clanker"
 
 [project.scripts]
-clanker = "clanker.cli:main"
-clanker-install = "clanker.cli:install"
+clanker-shell = "clanker.cli:main"
+clanker-shell-remote = "clanker.cli:shell_remote"
 
 [project.optional-dependencies]
 dev = [
