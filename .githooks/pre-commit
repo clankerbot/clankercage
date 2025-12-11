@@ -1,10 +1,24 @@
 #!/bin/bash
-# Pre-commit hook to run unit tests
+# Pre-commit hook to run linting and unit tests
 # Skip with: git commit --no-verify
 
 set -e
 
+echo "Running ShellCheck on shell scripts..."
+if command -v shellcheck &> /dev/null; then
+    find . -name '*.sh' -type f -not -path './.git/*' -print0 | xargs -0 shellcheck --severity=warning
+else
+    echo "⚠ ShellCheck not installed, skipping"
+fi
+
+echo "Running Hadolint on Dockerfiles..."
+if command -v hadolint &> /dev/null; then
+    find . -name 'Dockerfile' -type f -not -path './.git/*' -exec hadolint {} \;
+else
+    echo "⚠ Hadolint not installed, skipping"
+fi
+
 echo "Running unit tests..."
 uv run pytest tests/test_cli.py -m "not integration" --tb=short -q
 
-echo "✓ Unit tests passed"
+echo "✓ All checks passed"
