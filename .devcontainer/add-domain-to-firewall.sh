@@ -4,6 +4,17 @@ set -euo pipefail
 # Adds a domain to the allowed-domains ipset
 # Usage: add-domain-to-firewall.sh <domain>
 
+# Audit log location - shared with init-firewall.sh
+AUDIT_LOG="/home/node/.claude/firewall-audit.log"
+
+# Audit logging function
+audit_log() {
+    local event_type="$1"
+    shift
+    local details="$*"
+    echo "$(date -Iseconds) | $event_type | $details" >> "$AUDIT_LOG" 2>/dev/null || true
+}
+
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <domain>" >&2
     exit 1
@@ -38,4 +49,5 @@ while read -r ip; do
     fi
 done <<< "$IPS"
 
+audit_log "DOMAIN_APPROVED" "domain=$DOMAIN ips=$IPS"
 echo "Domain $DOMAIN is now allowed"
