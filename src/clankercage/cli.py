@@ -99,7 +99,7 @@ def modify_config(config: dict, args: argparse.Namespace, runtime_dir: Path, dev
     if args.gpg_key_id:
         config.setdefault("mounts", [])
         config["mounts"].append(
-            "source=${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind"
+            "source=${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind,readonly"
         )
 
     # Build postStartCommand
