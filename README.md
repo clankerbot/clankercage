@@ -137,6 +137,12 @@ Done! Copy `~/.claude/` to bring your configuration if desired.
 - Clone the repo: `git clone https://github.com/clankerbot/clanker.git`
 - Run tests: `bash clanker/scripts/run-tests.sh`
 
+**UV hardlink warning?**
+If you see `warning: Failed to hardlink files; falling back to full copy`:
+- This is harmless - it occurs when uv's cache is on a different filesystem than your project
+- To suppress: `export UV_LINK_MODE=copy`
+- Or add to your shell profile for permanent fix
+
 
 ## Development
 
