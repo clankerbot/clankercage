@@ -22,6 +22,10 @@ gcr.io
 quay.io
 
 # CDNs (commonly used by npm packages)
+# WARNING: These domains serve user-uploaded content and could be used for data exfiltration.
+# An attacker with code execution could publish an npm package and curl data to it via unpkg.com.
+# Consider removing these if your workflow doesn't require runtime CDN fetches.
+# See: https://github.com/clankerbot/clankercage/issues/30
 unpkg.com
 cdn.jsdelivr.net
 cdnjs.cloudflare.com
