@@ -87,11 +87,10 @@ WORKDIR /workspace
 USER node
 
 # Install oh-my-zsh and configure shell
-# Also add GitHub's host keys to known_hosts to avoid "Host key verification failed"
+# Note: GitHub host keys are added at runtime via postStartCommand (not build time)
+# to ensure fresh keys and avoid network dependency during build
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
   mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
-  ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null && \
-  chmod 600 ~/.ssh/known_hosts && \
   echo 'plugins=(git fzf)' >> ~/.zshrc && \
   echo 'source /usr/share/doc/fzf/examples/key-bindings.zsh 2>/dev/null || true' >> ~/.zshrc && \
   echo 'source /usr/share/doc/fzf/examples/completion.zsh 2>/dev/null || true' >> ~/.zshrc && \

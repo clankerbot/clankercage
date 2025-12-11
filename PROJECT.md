@@ -27,24 +27,21 @@ A sandboxed devcontainer environment for running Claude Code with `--dangerously
 ### Testing
 - [x] SSH integration test using local SSH server via clanker CLI
 - [x] Firewall verification made non-fatal (warns instead of exits)
+- [x] Unit tests for SSH mount warning functionality (11 tests)
+
+### Build Optimizations
+- [x] npm cache mount for Claude Code install
+- [x] ssh-keyscan moved to runtime (postStartCommand) - eliminates network dependency during build
+- [x] SSH mount warning when container exists without SSH mounts
 
 ## Outstanding TODOs
-
-### High Priority
-- [ ] **Add npm cache mount** to Claude Code install in Dockerfile
-  - Location: `.devcontainer/Dockerfile` line 54
-  - Change: `RUN --mount=type=cache,target=/root/.npm,sharing=locked npm install -g ...`
-
-### Medium Priority
-- [ ] **Move ssh-keyscan to runtime** - currently runs at build time, should be in postStartCommand
-- [ ] **Add SSH mount warning** - warn when `--ssh-key-file` specified but container exists without SSH mounts
-- [ ] **Document container reuse limitation** - mounts can't be added to running containers
 
 ### Low Priority
 - [ ] Automerge on CI check pass - configure GitHub branch protection
 - [ ] Hadolint: review output and fix/ignore specific rules
 - [ ] Combine user/directory setup RUN commands in Dockerfile
 - [ ] Consider `--recreate-container` flag for mount changes
+- [ ] Document container reuse limitation in README
 
 ### GitHub Auth (Manual Steps)
 - [ ] Create PAT for clankerbot (scopes: repo, workflow, write:packages)

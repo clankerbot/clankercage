@@ -198,6 +198,54 @@ def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, 
 IMAGE_NAME = "ghcr.io/clankerbot/clanker:latest"
 
 
+def get_existing_container(project_dir: Path) -> str | None:
+    """Get the container ID for an existing devcontainer for this project."""
+    result = subprocess.run(
+        ["docker", "ps", "-a", "--filter", f"label=devcontainer.local_folder={project_dir}", "-q"],
+        capture_output=True, text=True
+    )
+    container_id = result.stdout.strip()
+    return container_id if container_id else None
+
+
+def container_has_ssh_mounts(container_id: str) -> bool:
+    """Check if container has SSH key mounts."""
+    result = subprocess.run(
+        ["docker", "inspect", container_id, "--format", "{{json .Mounts}}"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        return False
+    try:
+        mounts = json.loads(result.stdout)
+        for mount in mounts:
+            dest = mount.get("Destination", "")
+            if ".ssh/" in dest and dest != "/home/node/.ssh":
+                return True
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return False
+
+
+def warn_if_ssh_mount_missing(args: argparse.Namespace, project_dir: Path) -> None:
+    """Warn if SSH key requested but existing container lacks SSH mounts."""
+    if not args.ssh_key_file:
+        return
+
+    container_id = get_existing_container(project_dir)
+    if not container_id:
+        return
+
+    if not container_has_ssh_mounts(container_id):
+        print(
+            "\n⚠️  WARNING: SSH key specified but existing container lacks SSH mounts.\n"
+            "   The SSH key will NOT be available inside the container.\n"
+            "   To fix: remove the container and restart:\n"
+            f"   docker rm -f {container_id}\n",
+            file=sys.stderr
+        )
+
+
 def pull_docker_image_if_needed() -> None:
     """Pull the Docker image if not already present."""
     result = subprocess.run(
@@ -230,6 +278,9 @@ def main() -> None:
 
     # Capture current working directory (the project to mount)
     project_dir = Path.cwd().resolve()
+
+    # Warn if SSH key requested but existing container lacks mounts
+    warn_if_ssh_mount_missing(args, project_dir)
 
     # Extract embedded devcontainer files to cache directory
     cache_dir = extract_devcontainer_files()
