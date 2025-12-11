@@ -55,6 +55,8 @@ def generate_ssh_config(runtime_dir: Path, ssh_key_name: str) -> Path:
   IdentityFile /home/node/.ssh/{ssh_key_name}
   IdentitiesOnly yes
 """)
+    # SSH requires strict permissions on config files
+    ssh_config.chmod(0o644)
     return ssh_config
 
 
