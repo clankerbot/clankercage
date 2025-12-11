@@ -63,9 +63,6 @@ RUN OLD_USER=$(getent passwd 1000 | cut -d: -f1) && \
   chsh -s /bin/zsh node && \
   { echo 'node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh'; \
     echo 'node ALL=(root) NOPASSWD: /usr/local/bin/add-domain-to-firewall.sh'; \
-    echo 'node ALL=(root) NOPASSWD: /sbin/ipset add allowed-domains *'; \
-    echo 'node ALL=(root) NOPASSWD: /sbin/ipset test allowed-domains *'; \
-    echo 'node ALL=(root) NOPASSWD: /sbin/ipset list allowed-domains'; \
   } > /etc/sudoers.d/node-firewall && \
   chmod 0440 /etc/sudoers.d/node-firewall && \
   (usermod -aG docker node 2>/dev/null || groupadd docker && usermod -aG docker node || true) && \
