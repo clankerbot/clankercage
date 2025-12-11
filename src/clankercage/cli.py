@@ -63,12 +63,13 @@ def modify_config(config: dict, args: argparse.Namespace, runtime_dir: Path, dev
     if project_dir:
         config["workspaceMount"] = f"source={project_dir},target=/workspace,type=bind,consistency=delegated"
 
-    # Replace .claude docker volume with bind mount
+    # Replace .claude docker volume with read-only bind mount for security
+    # This prevents container from modifying settings, hooks, or stealing API keys
     if "mounts" in config:
         config["mounts"] = [
             m.replace(
                 "source=claude-code-config-${devcontainerId},target=/home/node/.claude,type=volume",
-                "source=${localEnv:HOME}/.claude,target=/home/node/.claude,type=bind"
+                "source=${localEnv:HOME}/.claude,target=/home/node/.claude,type=bind,readonly"
             ) if "claude-code-config" in m else m
             for m in config["mounts"]
         ]
