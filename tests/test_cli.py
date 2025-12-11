@@ -368,6 +368,8 @@ def describe_claude_flag_passthrough():
     """Tests for passing arbitrary flags to claude."""
 
     @pytest.mark.integration
+    @pytest.mark.claude
+    @pytest.mark.skip(reason="Requires Claude API key and writable .claude directory - run manually")
     def it_passes_continue_flag_to_claude(workspace_path: Path):
         """Verify that --continue flag is passed through to claude.
 
@@ -375,6 +377,10 @@ def describe_claude_flag_passthrough():
         1. Run claude with prompt "what is 1+1"
         2. Run with --continue and ask to add 1 again
         3. Result should be 3 (proving conversation continuity)
+
+        Note: This test is skipped in CI because it requires:
+        - A valid ANTHROPIC_API_KEY
+        - Writable .claude directory (currently mounted read-only for security)
         """
         # First run - ask 1+1
         result1 = run_claude(
