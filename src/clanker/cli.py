@@ -6,7 +6,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 __all__ = ["main", "install"]
@@ -17,18 +16,23 @@ def get_embedded_devcontainer_dir() -> Path:
     return Path(__file__).parent / "devcontainer"
 
 
-def extract_devcontainer_to_temp() -> Path:
-    """Extract embedded devcontainer files to a temp directory."""
-    temp_dir = Path(tempfile.mkdtemp(prefix="clanker-"))
-    devcontainer_dir = temp_dir / ".devcontainer"
-    devcontainer_dir.mkdir()
+def get_workspace_dir() -> Path:
+    """Get the fixed workspace directory for devcontainer files."""
+    return Path.home() / ".cache" / "clanker" / "workspace"
+
+
+def extract_devcontainer_files() -> Path:
+    """Extract embedded devcontainer files to a fixed cache directory."""
+    workspace_dir = get_workspace_dir()
+    devcontainer_dir = workspace_dir / ".devcontainer"
+    devcontainer_dir.mkdir(parents=True, exist_ok=True)
 
     pkg_dir = get_embedded_devcontainer_dir()
     for f in pkg_dir.iterdir():
         if f.is_file() and f.name != "__init__.py" and not f.name.endswith(".pyc"):
             shutil.copy2(f, devcontainer_dir / f.name)
 
-    return temp_dir
+    return workspace_dir
 
 
 def get_docker_socket_gid() -> str | None:
@@ -217,8 +221,8 @@ def main() -> None:
     if not args.build:
         pull_docker_image_if_needed()
 
-    # Extract embedded devcontainer files to temp directory
-    workspace_dir = extract_devcontainer_to_temp()
+    # Extract embedded devcontainer files to cache directory
+    workspace_dir = extract_devcontainer_files()
     devcontainer_dir = workspace_dir / ".devcontainer"
     source_config = devcontainer_dir / "devcontainer.json"
 
