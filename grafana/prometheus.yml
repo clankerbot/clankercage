@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Scrape metrics from the OpenTelemetry Collector's Prometheus exporter
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['otel-collector:8889']
+    metric_relabel_configs:
+      # Remove the claude_code_ prefix added by the collector since metrics already have it
+      - source_labels: [__name__]
+        regex: 'claude_code_claude_code_(.*)'
+        target_label: __name__
+        replacement: 'claude_code_$1'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
