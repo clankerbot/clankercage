@@ -140,6 +140,16 @@ Done! Copy `~/.claude/` to bring your configuration if desired.
 
 ## Development
 
+### Setting Up Git Hooks
+
+Enable pre-commit hooks to run unit tests before each commit:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This runs unit tests automatically. Skip with `git commit --no-verify` for WIP commits.
+
 ### Adding New Tests
 
 1. Create test script in `tests/` with format: `##-test-name.sh`
