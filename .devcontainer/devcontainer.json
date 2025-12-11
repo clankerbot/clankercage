@@ -36,15 +36,17 @@
   "mounts": [
     "source=claude-code-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
     "source=${localEnv:HOME}/.claude,target=/home/node/.claude,type=bind",
+    "source=${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind",
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
   ],
   "containerEnv": {
     "NODE_OPTIONS": "--max-old-space-size=4096",
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
-    "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
+    "POWERLEVEL9K_DISABLE_GITSTATUS": "true",
+    "GPG_TTY": "/dev/pts/0"
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postStartCommand": "ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null; sudo /usr/local/bin/init-firewall.sh",
+  "postStartCommand": "ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null; sudo /usr/local/bin/init-firewall.sh; /usr/local/bin/setup-gpg.sh",
   "waitFor": "postStartCommand"
 }

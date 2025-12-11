@@ -29,8 +29,8 @@ def run_clanker(
     ssh_key_file: str | None = None,
     build: bool = False,
 ) -> subprocess.CompletedProcess:
-    """Run clanker with --shell in a given project directory."""
-    cmd = ["uv", "run", "clanker", "--shell", shell_cmd]
+    """Run clanker-shell with --shell in a given project directory."""
+    cmd = ["uv", "run", "clanker-shell", "--shell", shell_cmd]
 
     if build:
         cmd.append("--build")

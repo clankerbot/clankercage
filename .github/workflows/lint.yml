@@ -16,11 +16,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
       - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@master
-        with:
-          scandir: '.'
-          severity: warning
+        run: |
+          find . -name '*.sh' -type f | xargs shellcheck --severity=warning
 
   hadolint:
     name: Hadolint (Dockerfile)
