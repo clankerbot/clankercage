@@ -27,7 +27,8 @@ def describe_container():
     @pytest.mark.integration
     def it_has_required_tools(devcontainer: DevContainer):
         """Verify that required development tools are installed."""
-        tools = ["git", "node", "npm", "pnpm", "uv", "uvx", "docker", "gh", "jq", "curl"]
+        # Note: Docker CLI was removed (issue #45) - socket is not mounted for security
+        tools = ["git", "node", "npm", "pnpm", "uv", "uvx", "gh", "jq", "curl"]
 
         for tool in tools:
             result = devcontainer.exec(f"which {tool}", timeout=10)

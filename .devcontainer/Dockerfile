@@ -33,11 +33,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   ca-certificates \
   iputils-ping
 
-# Install Docker CLI and git-delta (with retry for transient failures)
-ARG DOCKER_VERSION=27.3.1
+# Install git-delta (with retry for transient failures)
+# Note: Docker CLI was removed - Docker socket is not mounted for security reasons (PR #33)
+# so the CLI served no purpose and added ~50MB to the image
 ARG GIT_DELTA_VERSION=0.18.2
 RUN ARCH=$(dpkg --print-architecture) && \
-  (curl -fsSL --retry 3 --retry-delay 5 "https://download.docker.com/linux/static/stable/$(uname -m)/docker-${DOCKER_VERSION}.tgz" | tar xz --strip-components=1 -C /usr/local/bin docker/docker) && \
   curl -fsSL --retry 3 --retry-delay 5 "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" -o /tmp/git-delta.deb && \
   dpkg -i /tmp/git-delta.deb && rm /tmp/git-delta.deb
 
@@ -67,7 +67,6 @@ RUN OLD_USER=$(getent passwd 1000 | cut -d: -f1) && \
     echo 'node ALL=(root) NOPASSWD: /usr/local/bin/add-domain-to-firewall.sh'; \
   } > /etc/sudoers.d/node-firewall && \
   chmod 0440 /etc/sudoers.d/node-firewall && \
-  (usermod -aG docker node 2>/dev/null || groupadd docker && usermod -aG docker node || true) && \
   mkdir /commandhistory && \
   touch /commandhistory/.bash_history && \
   chown -R node /commandhistory && \

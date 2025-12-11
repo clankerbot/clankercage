@@ -53,16 +53,6 @@ jobs:
       - name: Test - git is installed
         run: docker run --rm clankercage-test:latest git --version
 
-      - name: Test - docker CLI is installed
-        run: docker run --rm clankercage-test:latest docker --version
-
-      - name: Test - docker socket access works
-        run: |
-          # Get the docker socket's group ID on the host
-          DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
-          # Run with that group added so the node user can access the socket
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock --group-add $DOCKER_GID clankercage-test:latest docker ps
-
       - name: Test - firewall scripts exist
         run: |
           docker run --rm clankercage-test:latest ls -la /usr/local/bin/init-firewall.sh

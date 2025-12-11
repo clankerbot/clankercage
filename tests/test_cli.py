@@ -184,29 +184,8 @@ def describe_workspace_mounting():
         )
 
 
-def describe_docker_access():
-    """Tests for Docker socket access."""
-
-    @pytest.mark.integration
-    def it_can_access_docker_socket(workspace_path: Path):
-        """Verify that docker commands work inside the container."""
-        result = run_clanker(workspace_path, "docker ps --format '{{.ID}}' | head -1")
-
-        assert result.returncode == 0, f"Docker command failed: {result.stderr}"
-        # Should return at least one container ID (the clanker container itself)
-        # or empty if no containers running - either is fine, just shouldn't error
-
-
 def describe_installed_tools():
     """Tests for tools that should be available in the container."""
-
-    @pytest.mark.integration
-    def it_has_docker_available(workspace_path: Path):
-        """Verify docker CLI is installed and can connect to daemon."""
-        result = run_clanker(workspace_path, "docker --version && docker info --format '{{.ServerVersion}}'")
-
-        assert result.returncode == 0, f"Docker not available: {result.stderr}"
-        assert "Docker version" in result.stdout, f"Unexpected docker output: {result.stdout}"
 
     @pytest.mark.integration
     def it_has_uv_available(workspace_path: Path):
