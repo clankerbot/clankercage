@@ -58,13 +58,17 @@ def generate_ssh_config(runtime_dir: Path, ssh_key_name: str) -> Path:
     return ssh_config
 
 
-def modify_config(config: dict, args: argparse.Namespace, runtime_dir: Path, devcontainer_dir: Path | None = None) -> dict:
+def modify_config(config: dict, args: argparse.Namespace, runtime_dir: Path, devcontainer_dir: Path | None = None, project_dir: Path | None = None) -> dict:
     """Modify devcontainer config with user-specific settings."""
 
     # If --build flag, replace image with build config
     if args.build and devcontainer_dir:
         config.pop("image", None)
         config["build"] = {"dockerfile": "Dockerfile", "context": "."}
+
+    # Mount the actual project directory (where user ran clanker from)
+    if project_dir:
+        config["workspaceMount"] = f"source={project_dir},target=/workspace,type=bind,consistency=delegated"
 
     # Replace .claude docker volume with bind mount
     if "mounts" in config:
@@ -221,9 +225,12 @@ def main() -> None:
     if not args.build:
         pull_docker_image_if_needed()
 
+    # Capture current working directory (the project to mount)
+    project_dir = Path.cwd().resolve()
+
     # Extract embedded devcontainer files to cache directory
-    workspace_dir = extract_devcontainer_files()
-    devcontainer_dir = workspace_dir / ".devcontainer"
+    cache_dir = extract_devcontainer_files()
+    devcontainer_dir = cache_dir / ".devcontainer"
     source_config = devcontainer_dir / "devcontainer.json"
 
     # Setup runtime directory for SSH config etc
@@ -232,13 +239,13 @@ def main() -> None:
 
     # Load and modify config
     config = json.loads(source_config.read_text())
-    config = modify_config(config, args, runtime_dir, devcontainer_dir)
+    config = modify_config(config, args, runtime_dir, devcontainer_dir, project_dir)
 
     # Write modified config back to the temp devcontainer dir
     runtime_config = devcontainer_dir / "devcontainer.json"
     runtime_config.write_text(json.dumps(config, indent=2))
 
-    run_devcontainer(runtime_config, workspace_dir, claude_args)
+    run_devcontainer(runtime_config, cache_dir, claude_args)
 
 
 def install() -> None:
