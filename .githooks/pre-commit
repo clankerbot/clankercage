@@ -1,0 +1,10 @@
+#!/bin/bash
+# Pre-commit hook to run unit tests
+# Skip with: git commit --no-verify
+
+set -e
+
+echo "Running unit tests..."
+uv run pytest tests/test_cli.py -m "not integration" --tb=short -q
+
+echo "✓ Unit tests passed"
