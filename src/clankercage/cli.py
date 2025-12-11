@@ -37,17 +37,6 @@ def extract_devcontainer_files() -> Path:
     return workspace_dir
 
 
-def get_docker_socket_gid() -> str | None:
-    """Get the GID of the docker socket if it exists."""
-    socket_path = Path("/var/run/docker.sock")
-    if socket_path.is_socket():
-        try:
-            return str(os.stat(socket_path).st_gid)
-        except OSError:
-            pass
-    return None
-
-
 def generate_ssh_config(runtime_dir: Path, ssh_key_name: str) -> Path:
     """Generate SSH config file for GitHub."""
     ssh_config = runtime_dir / "ssh_config"
@@ -111,13 +100,6 @@ def modify_config(config: dict, args: argparse.Namespace, runtime_dir: Path, dev
         config["mounts"].append(
             "source=${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind"
         )
-
-    # Add docker group to runArgs if socket exists
-    docker_gid = get_docker_socket_gid()
-    if docker_gid:
-        config.setdefault("runArgs", [])
-        if "--group-add" not in config["runArgs"]:
-            config["runArgs"].extend(["--group-add", docker_gid])
 
     # Build postStartCommand
     commands = ["sudo /usr/local/bin/init-firewall.sh"]
@@ -209,6 +191,40 @@ def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, 
 IMAGE_NAME = "ghcr.io/clankerbot/clankercage:latest"
 
 
+def get_container_info(image_name: str) -> dict:
+    """Get container build info from Docker image labels.
+
+    Returns dict with 'build_time' and 'source' keys.
+    """
+    result = subprocess.run(
+        ["docker", "image", "inspect", image_name, "--format",
+         '{{index .Config.Labels "org.opencontainers.image.created"}}|{{index .Config.Labels "org.opencontainers.image.source.type"}}'],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        return {"build_time": "unknown", "source": "unknown"}
+
+    parts = result.stdout.strip().split("|")
+    build_time = parts[0] if parts[0] else "unknown"
+    source = parts[1] if len(parts) > 1 and parts[1] else "local"
+
+    return {"build_time": build_time, "source": source}
+
+
+def print_container_info(image_name: str) -> None:
+    """Print container build information on startup."""
+    info = get_container_info(image_name)
+
+    source_display = "GitHub Container Registry (ghcr.io)" if info["source"] == "ghcr.io" else "Local build"
+    build_time_display = info["build_time"] if info["build_time"] != "unknown" else "Unknown"
+
+    print(f"Container image: {image_name}")
+    print(f"  Built: {build_time_display}")
+    print(f"  Source: {source_display}")
+    print()
+
+
 def check_docker_accessible() -> None:
     """Check if Docker is running and accessible. Exit with error if not."""
     result = subprocess.run(
@@ -267,6 +283,10 @@ def main() -> None:
     # Pull image if not building locally and image doesn't exist
     if not args.build:
         pull_docker_image_if_needed()
+        print_container_info(IMAGE_NAME)
+    else:
+        print("Container image: Local build (--build flag)")
+        print()
 
     # Capture current working directory (the project to mount)
     project_dir = Path.cwd().resolve()

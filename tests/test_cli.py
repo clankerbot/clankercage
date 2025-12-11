@@ -9,8 +9,75 @@ These tests verify that:
 import subprocess
 import uuid
 from pathlib import Path
+from unittest import mock
 
 import pytest
+
+from clankercage.cli import get_container_info
+
+
+def describe_get_container_info():
+    """Unit tests for get_container_info function."""
+
+    def it_parses_ghcr_image_labels():
+        """Test parsing labels from a ghcr.io built image."""
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "2025-01-15T10:30:00Z|ghcr.io"
+
+        with mock.patch("subprocess.run", return_value=mock_result):
+            info = get_container_info("ghcr.io/test/image:latest")
+
+        assert info["build_time"] == "2025-01-15T10:30:00Z"
+        assert info["source"] == "ghcr.io"
+
+    def it_parses_local_image_labels():
+        """Test parsing labels from a locally built image."""
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "2025-01-15T10:30:00Z|local"
+
+        with mock.patch("subprocess.run", return_value=mock_result):
+            info = get_container_info("my-local-image:latest")
+
+        assert info["build_time"] == "2025-01-15T10:30:00Z"
+        assert info["source"] == "local"
+
+    def it_handles_missing_labels():
+        """Test handling images without labels."""
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "|"
+
+        with mock.patch("subprocess.run", return_value=mock_result):
+            info = get_container_info("image-without-labels:latest")
+
+        assert info["build_time"] == "unknown"
+        assert info["source"] == "local"
+
+    def it_handles_docker_inspect_failure():
+        """Test handling when docker inspect fails."""
+        mock_result = mock.Mock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+
+        with mock.patch("subprocess.run", return_value=mock_result):
+            info = get_container_info("nonexistent:latest")
+
+        assert info["build_time"] == "unknown"
+        assert info["source"] == "unknown"
+
+    def it_handles_partial_labels():
+        """Test handling when only build_time label exists."""
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "2025-01-15T10:30:00Z|"
+
+        with mock.patch("subprocess.run", return_value=mock_result):
+            info = get_container_info("partial-labels:latest")
+
+        assert info["build_time"] == "2025-01-15T10:30:00Z"
+        assert info["source"] == "local"
 
 
 @pytest.fixture

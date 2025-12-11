@@ -101,6 +101,12 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
   echo 'export PROMPT_COMMAND="history -a"' >> ~/.zshrc && \
   echo 'export HISTFILE=/commandhistory/.bash_history' >> ~/.zshrc
 
+# Build metadata labels (set via --build-arg or defaulted)
+ARG BUILD_TIMESTAMP="unknown"
+ARG BUILD_SOURCE="local"
+LABEL org.opencontainers.image.created="${BUILD_TIMESTAMP}"
+LABEL org.opencontainers.image.source.type="${BUILD_SOURCE}"
+
 # Health check to verify Claude Code is functional
 HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
   CMD claude --version > /dev/null 2>&1 || exit 1

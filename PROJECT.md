@@ -9,7 +9,7 @@ A sandboxed devcontainer environment for running Claude Code with `--dangerously
 - **Network firewall** - iptables-based allowlist blocking all outbound traffic except whitelisted domains
 - **SSH support** - `--ssh-key-file` flag mounts keys into container
 - **GPG signing** - `--gpg-key-id` flag for signed commits
-- **Docker socket access** - container can run docker commands
+- **Docker CLI** - Docker CLI available for image builds (socket not mounted by default)
 - **`--build` flag** - build from local Dockerfile instead of GHCR image
 - **`--shell` flag** - run a command instead of interactive Claude Code
 
@@ -17,7 +17,7 @@ A sandboxed devcontainer environment for running Claude Code with `--dangerously
 - [x] uv support (cache issue fixed)
 - [x] pnpm support (installed via corepack)
 - [x] Playwright for web browsing
-- [x] Docker CLI with socket mount
+- [x] Docker CLI (socket not mounted by default for security)
 
 ### CI/CD
 - [x] Container build tests (`test-container.yml`)
@@ -48,7 +48,7 @@ A sandboxed devcontainer environment for running Claude Code with `--dangerously
 - [ ] Run `gh auth login` with clankerbot token
 
 ### Blog Post (separate repo)
-- [ ] Add "Baked-In Tools" section: pnpm, uv, Playwright, Docker socket
+- [ ] Add "Baked-In Tools" section: pnpm, uv, Playwright, Docker CLI
 
 ## Known Limitations
 
