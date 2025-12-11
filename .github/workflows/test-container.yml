@@ -30,54 +30,54 @@ jobs:
           context: .devcontainer
           file: .devcontainer/Dockerfile
           load: true
-          tags: clanker-test:latest
+          tags: clankercage-test:latest
 
       - name: Test - uv is installed
-        run: docker run --rm clanker-test:latest uv --version
+        run: docker run --rm clankercage-test:latest uv --version
 
       - name: Test - uvx is installed
-        run: docker run --rm clanker-test:latest uvx --version
+        run: docker run --rm clankercage-test:latest uvx --version
 
       - name: Test - pnpm is installed
-        run: docker run --rm clanker-test:latest pnpm --version
+        run: docker run --rm clankercage-test:latest pnpm --version
 
       - name: Test - npm is installed
-        run: docker run --rm clanker-test:latest npm --version
+        run: docker run --rm clankercage-test:latest npm --version
 
       - name: Test - node is installed
-        run: docker run --rm clanker-test:latest node --version
+        run: docker run --rm clankercage-test:latest node --version
 
       - name: Test - claude is installed
-        run: docker run --rm clanker-test:latest claude --version
+        run: docker run --rm clankercage-test:latest claude --version
 
       - name: Test - git is installed
-        run: docker run --rm clanker-test:latest git --version
+        run: docker run --rm clankercage-test:latest git --version
 
       - name: Test - docker CLI is installed
-        run: docker run --rm clanker-test:latest docker --version
+        run: docker run --rm clankercage-test:latest docker --version
 
       - name: Test - docker socket access works
         run: |
           # Get the docker socket's group ID on the host
           DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
           # Run with that group added so the node user can access the socket
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock --group-add $DOCKER_GID clanker-test:latest docker ps
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock --group-add $DOCKER_GID clankercage-test:latest docker ps
 
       - name: Test - firewall scripts exist
         run: |
-          docker run --rm clanker-test:latest ls -la /usr/local/bin/init-firewall.sh
-          docker run --rm clanker-test:latest ls -la /usr/local/bin/add-domain-to-firewall.sh
-          docker run --rm clanker-test:latest ls -la /usr/local/bin/safe-rm
+          docker run --rm clankercage-test:latest ls -la /usr/local/bin/init-firewall.sh
+          docker run --rm clankercage-test:latest ls -la /usr/local/bin/add-domain-to-firewall.sh
+          docker run --rm clankercage-test:latest ls -la /usr/local/bin/safe-rm
 
       - name: Test - GPG setup script exists
-        run: docker run --rm clanker-test:latest ls -la /usr/local/bin/setup-gpg.sh
+        run: docker run --rm clankercage-test:latest ls -la /usr/local/bin/setup-gpg.sh
 
       - name: Test - whitelisted domains file exists
-        run: docker run --rm clanker-test:latest cat /usr/local/share/whitelisted-domains.txt | head -20
+        run: docker run --rm clankercage-test:latest cat /usr/local/share/whitelisted-domains.txt | head -20
 
       - name: Test - runs as non-root user
         run: |
-          USER=$(docker run --rm clanker-test:latest whoami)
+          USER=$(docker run --rm clankercage-test:latest whoami)
           if [ "$USER" != "node" ]; then
             echo "Expected user 'node', got '$USER'"
             exit 1

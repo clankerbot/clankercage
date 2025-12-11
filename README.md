@@ -1,10 +1,10 @@
-# Clanker
+# ClankerCage
 
 Devcontainer setup and testing infrastructure for Claude Code.
 
 ## Overview
 
-Clanker provides:
+ClankerCage provides:
 - **Easy Setup** - One-command devcontainer installation
 - **Testing Infrastructure** - Automated validation suite
 - **Helper Scripts** - Utilities for setup and testing
@@ -15,7 +15,7 @@ Clanker provides:
 No installation needed! Run directly:
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts/claude-code.sh)
+bash <(curl -s https://raw.githubusercontent.com/clankerbot/clankercage/main/scripts/claude-code.sh)
 ```
 
 This script:
@@ -46,14 +46,14 @@ Clean and minimal - just the devcontainer config.
 ### 1. Run Setup Script
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts/claude-code.sh)
+bash <(curl -s https://raw.githubusercontent.com/clankerbot/clankercage/main/scripts/claude-code.sh)
 ```
 
 ## How It Works
 
 ### Devcontainer Setup
 
-Clanker modifies the default Claude Code devcontainer to use a bind mount instead of a volume:
+ClankerCage modifies the default Claude Code devcontainer to use a bind mount instead of a volume:
 
 **Before:**
 ```json
@@ -114,7 +114,7 @@ scripts/approve-domain.sh example.com --check-only
 
 ```bash
 # Run the setup script
-bash <(curl -s https://raw.githubusercontent.com/clankerbot/clanker/main/scripts/claude-code.sh)
+bash <(curl -s https://raw.githubusercontent.com/clankerbot/clankercage/main/scripts/claude-code.sh)
 ```
 
 Done! Copy `~/.claude/` to bring your configuration if desired.
@@ -134,8 +134,8 @@ Done! Copy `~/.claude/` to bring your configuration if desired.
 - Verify devcontainer config: `cat ~/.claude/.devcontainer/devcontainer.json`
 
 **Want to run tests?**
-- Clone the repo: `git clone https://github.com/clankerbot/clanker.git`
-- Run tests: `bash clanker/scripts/run-tests.sh`
+- Clone the repo: `git clone https://github.com/clankerbot/clankercage.git`
+- Run tests: `bash clankercage/scripts/run-tests.sh`
 
 **UV hardlink warning?**
 If you see `warning: Failed to hardlink files; falling back to full copy`:
@@ -183,7 +183,7 @@ This runs unit tests automatically. Skip with `git commit --no-verify` for WIP c
 
 ## Architecture Principles
 
-1. **Minimal Core** - Clanker handles only devcontainer setup
+1. **Minimal Core** - ClankerCage handles only devcontainer setup
 2. **Plugin Ecosystem** - Extended functionality via plugins
 3. **Bind Mount Strategy** - Single `~/.claude` mount for simplicity
 4. **Portable Configuration** - Git-tracked setup works across machines

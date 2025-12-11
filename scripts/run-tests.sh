@@ -3,7 +3,7 @@
 echo "Running Claude Code Setup Tests..."
 echo ""
 
-TESTS_DIR="$HOME/.claude/clanker/tests"
+TESTS_DIR="$HOME/.claude/clankercage/tests"
 PASSED=0
 FAILED=0
 
