@@ -88,7 +88,8 @@
       "WebFetch(domain:developer.mozilla.org)",
       "WebFetch(domain:crates.io)",
       "WebFetch(domain:pkg.go.dev)",
-      "WebFetch(domain:docs.rs)"
+      "WebFetch(domain:docs.rs)",
+      "Bash(CLANKER_SSH_KEY=~/.ssh/id_ed25519_clanker uv run pytest:*)"
     ]
   }
 }
