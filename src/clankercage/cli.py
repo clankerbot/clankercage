@@ -155,6 +155,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gpg-key-id", help="GPG key ID for signing")
     parser.add_argument("--build", action="store_true", help="Build from local Dockerfile instead of using pre-built image")
     parser.add_argument("--shell", metavar="CMD", help="Run a shell command instead of claude (for testing)")
+    parser.add_argument("--safe-mode", action="store_true", help="Run Claude with permission prompts enabled (more interruptions, extra safety)")
     return parser
 
 
@@ -167,7 +168,7 @@ def apply_env_defaults(args: argparse.Namespace) -> None:
     args.gpg_key_id = args.gpg_key_id or os.environ.get("CLANKERCAGE_GPG_KEY_ID")
 
 
-def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, claude_args: list[str], shell_cmd: str | None = None) -> None:
+def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, claude_args: list[str], shell_cmd: str | None = None, safe_mode: bool = False) -> None:
     """Run the devcontainer with claude or a shell command.
 
     Each invocation creates a new container with a unique instance ID,
@@ -181,6 +182,8 @@ def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, 
 
     if shell_cmd:
         run_cmd = ["bash", "-c", shell_cmd]
+    elif safe_mode:
+        run_cmd = ["claude"] + claude_args
     else:
         run_cmd = ["claude", "--dangerously-skip-permissions"] + claude_args
 
@@ -288,7 +291,7 @@ def main() -> None:
     runtime_config = devcontainer_dir / "devcontainer.json"
     runtime_config.write_text(json.dumps(config, indent=2))
 
-    run_devcontainer(runtime_config, cache_dir, project_dir, claude_args, args.shell)
+    run_devcontainer(runtime_config, cache_dir, project_dir, claude_args, args.shell, args.safe_mode)
 
 
 def shell_remote() -> None:
