@@ -179,23 +179,74 @@ class InputBuffer:
             return bytes(self.buffer)
 
 
-def capture_stdin_background(input_buffer: InputBuffer, stop_event: threading.Event) -> None:
-    """Background thread to capture stdin during startup.
+def run_subprocess_with_input_capture(cmd: list[str], input_buffer: InputBuffer) -> bytes:
+    """Run a subprocess while capturing any stdin typed during execution.
 
-    Reads any available input without blocking and stores it in the buffer.
+    Uses a PTY so the subprocess gets proper terminal output, while we
+    intercept stdin in raw mode to buffer it for later replay.
+
+    Returns the captured input bytes.
     """
-    stdin_fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(sys.stdin.fileno())
 
-    while not stop_event.is_set():
-        # Use select to check if input is available (non-blocking)
-        readable, _, _ = select.select([stdin_fd], [], [], 0.05)
-        if readable:
+    # Create PTY for the subprocess
+    master_fd, slave_fd = pty.openpty()
+
+    proc = subprocess.Popen(
+        cmd,
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+
+    # Put our terminal in raw mode to capture keystrokes
+    tty.setraw(sys.stdin.fileno())
+
+    try:
+        while proc.poll() is None:
+            readable, _, _ = select.select([master_fd, sys.stdin.fileno()], [], [], 0.1)
+
+            # Forward subprocess output to our stdout
+            if master_fd in readable:
+                try:
+                    data = os.read(master_fd, 1024)
+                    if data:
+                        os.write(sys.stdout.fileno(), data)
+                except OSError:
+                    break
+
+            # Capture any user input (don't forward to subprocess)
+            if sys.stdin.fileno() in readable:
+                try:
+                    data = os.read(sys.stdin.fileno(), 1024)
+                    if data:
+                        input_buffer.append(data)
+                except OSError:
+                    break
+
+        # Drain remaining output
+        while True:
+            readable, _, _ = select.select([master_fd], [], [], 0.1)
+            if not readable:
+                break
             try:
-                data = os.read(stdin_fd, 1024)
-                if data:
-                    input_buffer.append(data)
+                data = os.read(master_fd, 1024)
+                if not data:
+                    break
+                os.write(sys.stdout.fileno(), data)
             except OSError:
                 break
+
+    finally:
+        os.close(master_fd)
+        termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_settings)
+
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd)
+
+    return input_buffer.stop_and_get()
 
 
 def run_with_pty(cmd: list[str], buffered_input: bytes) -> int:
@@ -310,19 +361,6 @@ def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, 
     else:
         run_cmd = ["claude", "--dangerously-skip-permissions"] + claude_args
 
-    # Start capturing stdin in background during startup
-    input_buffer = InputBuffer()
-    stop_event = threading.Event()
-    capture_thread = None
-
-    if sys.stdin.isatty():
-        capture_thread = threading.Thread(
-            target=capture_stdin_background,
-            args=(input_buffer, stop_event),
-            daemon=True
-        )
-        capture_thread.start()
-
     print(f"Starting devcontainer (instance {instance_id})...")
 
     up_cmd = devcontainer_cmd + [
@@ -332,13 +370,14 @@ def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, 
         "--id-label", id_label,
     ]
 
-    subprocess.run(up_cmd, check=True)
+    # Run devcontainer up while capturing any stdin typed during startup
+    input_buffer = InputBuffer()
+    buffered_input = b""
 
-    # Stop capturing and get buffered input
-    stop_event.set()
-    if capture_thread:
-        capture_thread.join(timeout=0.5)
-    buffered_input = input_buffer.stop_and_get()
+    if sys.stdin.isatty():
+        buffered_input = run_subprocess_with_input_capture(up_cmd, input_buffer)
+    else:
+        subprocess.run(up_cmd, check=True)
 
     if buffered_input:
         print(f"(Replaying {len(buffered_input)} bytes of buffered input)")
