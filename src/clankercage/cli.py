@@ -106,6 +106,16 @@ def modify_config(config: dict, args: argparse.Namespace, runtime_dir: Path, dev
             "source=${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind,readonly"
         )
 
+    # Add port mappings if specified
+    # Uses runArgs to pass -p flags directly to docker
+    if args.port:
+        config.setdefault("runArgs", [])
+        for port_mapping in args.port:
+            # Support both HOST:CONTAINER and just PORT (same for both)
+            if ":" not in port_mapping:
+                port_mapping = f"{port_mapping}:{port_mapping}"
+            config["runArgs"].extend(["-p", port_mapping])
+
     # Build postStartCommand
     commands = ["sudo /usr/local/bin/init-firewall.sh"]
 
@@ -143,6 +153,8 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--build", action="store_true", help="Build from local Dockerfile instead of using pre-built image")
     parser.add_argument("--shell", metavar="CMD", help="Run a shell command instead of claude (for testing)")
     parser.add_argument("--safe-mode", action="store_true", help="Run Claude with permission prompts enabled (more interruptions, extra safety)")
+    parser.add_argument("-p", "--port", action="append", metavar="HOST:CONTAINER",
+                        help="Map a port from host to container (can be specified multiple times)")
     return parser
 
 
