@@ -380,7 +380,7 @@ def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, 
         subprocess.run(up_cmd, check=True)
 
     if buffered_input:
-        print(f"(Replaying {len(buffered_input)} bytes of buffered input)")
+        print(f"(Replaying {len(buffered_input)} bytes of buffered input: {buffered_input!r})")
 
     exec_cmd = devcontainer_cmd + [
         "exec",
