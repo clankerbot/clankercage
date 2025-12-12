@@ -3,10 +3,15 @@
 import argparse
 import json
 import os
+import pty
+import select
 import shlex
 import shutil
 import subprocess
 import sys
+import termios
+import threading
+import tty
 import uuid
 from pathlib import Path
 
@@ -155,11 +160,141 @@ def apply_env_defaults(args: argparse.Namespace) -> None:
     args.gpg_key_id = args.gpg_key_id or os.environ.get("CLANKERCAGE_GPG_KEY_ID")
 
 
+class InputBuffer:
+    """Thread-safe buffer for capturing stdin during startup."""
+
+    def __init__(self):
+        self.buffer = bytearray()
+        self.lock = threading.Lock()
+        self.capturing = True
+
+    def append(self, data: bytes) -> None:
+        with self.lock:
+            if self.capturing:
+                self.buffer.extend(data)
+
+    def stop_and_get(self) -> bytes:
+        with self.lock:
+            self.capturing = False
+            return bytes(self.buffer)
+
+
+def capture_stdin_background(input_buffer: InputBuffer, stop_event: threading.Event) -> None:
+    """Background thread to capture stdin during startup.
+
+    Reads any available input without blocking and stores it in the buffer.
+    """
+    stdin_fd = sys.stdin.fileno()
+
+    while not stop_event.is_set():
+        # Use select to check if input is available (non-blocking)
+        readable, _, _ = select.select([stdin_fd], [], [], 0.05)
+        if readable:
+            try:
+                data = os.read(stdin_fd, 1024)
+                if data:
+                    input_buffer.append(data)
+            except OSError:
+                break
+
+
+def run_with_pty(cmd: list[str], buffered_input: bytes) -> int:
+    """Run command in a PTY, injecting buffered input.
+
+    This preserves full TTY behavior (colors, cursor, raw mode) while
+    allowing us to inject any input that was typed during startup.
+    """
+    # Save original terminal settings
+    old_settings = None
+    if sys.stdin.isatty():
+        old_settings = termios.tcgetattr(sys.stdin.fileno())
+
+    master_fd, slave_fd = pty.openpty()
+    pid = os.fork()
+
+    if pid == 0:
+        # Child process
+        os.close(master_fd)
+        os.setsid()
+
+        # Set up slave as controlling terminal
+        os.dup2(slave_fd, 0)
+        os.dup2(slave_fd, 1)
+        os.dup2(slave_fd, 2)
+        if slave_fd > 2:
+            os.close(slave_fd)
+
+        os.execvp(cmd[0], cmd)
+
+    # Parent process
+    os.close(slave_fd)
+
+    # Put terminal in raw mode for proper passthrough
+    if sys.stdin.isatty():
+        tty.setraw(sys.stdin.fileno())
+
+    # Inject buffered input first
+    if buffered_input:
+        os.write(master_fd, buffered_input)
+
+    try:
+        while True:
+            readable, _, _ = select.select([master_fd, sys.stdin.fileno()], [], [], 0.1)
+
+            if master_fd in readable:
+                try:
+                    data = os.read(master_fd, 1024)
+                    if not data:
+                        break
+                    os.write(sys.stdout.fileno(), data)
+                except OSError:
+                    break
+
+            if sys.stdin.fileno() in readable:
+                try:
+                    data = os.read(sys.stdin.fileno(), 1024)
+                    if data:
+                        os.write(master_fd, data)
+                except OSError:
+                    break
+
+            # Check if child has exited
+            result = os.waitpid(pid, os.WNOHANG)
+            if result[0] != 0:
+                # Drain any remaining output
+                while True:
+                    readable, _, _ = select.select([master_fd], [], [], 0.1)
+                    if not readable:
+                        break
+                    try:
+                        data = os.read(master_fd, 1024)
+                        if not data:
+                            break
+                        os.write(sys.stdout.fileno(), data)
+                    except OSError:
+                        break
+                break
+
+    finally:
+        os.close(master_fd)
+        # Restore terminal settings
+        if old_settings:
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_settings)
+
+    # Get exit status
+    _, status = os.waitpid(pid, 0)
+    if os.WIFEXITED(status):
+        return os.WEXITSTATUS(status)
+    return 1
+
+
 def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, claude_args: list[str], shell_cmd: str | None = None, safe_mode: bool = False, instance_id: str | None = None) -> None:
     """Run the devcontainer with claude or a shell command.
 
     Each invocation uses a unique instance ID for both the config directory
     and container label, allowing multiple clanker instances to run simultaneously.
+
+    Input typed during container startup is buffered and replayed once ready.
     """
     devcontainer_cmd = ["npx", "-y", "@devcontainers/cli"]
 
@@ -175,6 +310,19 @@ def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, 
     else:
         run_cmd = ["claude", "--dangerously-skip-permissions"] + claude_args
 
+    # Start capturing stdin in background during startup
+    input_buffer = InputBuffer()
+    stop_event = threading.Event()
+    capture_thread = None
+
+    if sys.stdin.isatty():
+        capture_thread = threading.Thread(
+            target=capture_stdin_background,
+            args=(input_buffer, stop_event),
+            daemon=True
+        )
+        capture_thread.start()
+
     print(f"Starting devcontainer (instance {instance_id})...")
 
     up_cmd = devcontainer_cmd + [
@@ -186,6 +334,15 @@ def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, 
 
     subprocess.run(up_cmd, check=True)
 
+    # Stop capturing and get buffered input
+    stop_event.set()
+    if capture_thread:
+        capture_thread.join(timeout=0.5)
+    buffered_input = input_buffer.stop_and_get()
+
+    if buffered_input:
+        print(f"(Replaying {len(buffered_input)} bytes of buffered input)")
+
     exec_cmd = devcontainer_cmd + [
         "exec",
         "--workspace-folder", str(project_dir),
@@ -193,8 +350,13 @@ def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, 
         "--id-label", id_label,
     ] + run_cmd
 
-    # Use execvp to replace process for clean TTY passthrough
-    os.execvp("npx", exec_cmd)
+    # Run with PTY to preserve terminal behavior, injecting buffered input
+    if sys.stdin.isatty():
+        exit_code = run_with_pty(exec_cmd, buffered_input)
+        sys.exit(exit_code)
+    else:
+        # Non-TTY mode: use execvp as before
+        os.execvp("npx", exec_cmd)
 
 
 IMAGE_NAME = "ghcr.io/clankerbot/clankercage:latest"
