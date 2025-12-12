@@ -284,9 +284,8 @@ def run_with_pty(cmd: list[str], buffered_input: bytes) -> int:
     if sys.stdin.isatty():
         tty.setraw(sys.stdin.fileno())
 
-    # Inject buffered input first
-    if buffered_input:
-        os.write(master_fd, buffered_input)
+    # Track whether we've injected buffered input yet
+    input_injected = not buffered_input  # True if nothing to inject
 
     try:
         while True:
@@ -298,6 +297,12 @@ def run_with_pty(cmd: list[str], buffered_input: bytes) -> int:
                     if not data:
                         break
                     os.write(sys.stdout.fileno(), data)
+
+                    # Inject buffered input after we see first output from process
+                    # This ensures the process is ready to receive input
+                    if not input_injected:
+                        os.write(master_fd, buffered_input)
+                        input_injected = True
                 except OSError:
                     break
 
@@ -380,7 +385,7 @@ def run_devcontainer(config_path: Path, workspace_dir: Path, project_dir: Path, 
         subprocess.run(up_cmd, check=True)
 
     if buffered_input:
-        print(f"(Replaying {len(buffered_input)} bytes of buffered input: {buffered_input!r})")
+        print(f"(Replaying {len(buffered_input)} bytes of buffered input)")
 
     exec_cmd = devcontainer_cmd + [
         "exec",
