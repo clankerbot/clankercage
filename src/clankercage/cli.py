@@ -100,10 +100,11 @@ def modify_config(config: dict, args: argparse.Namespace, runtime_dir: Path, dev
         )
 
     # Add GPG mount if key ID provided
+    # Note: GPG needs write access for lock files, agent sockets, and trustdb
     if args.gpg_key_id:
         config.setdefault("mounts", [])
         config["mounts"].append(
-            "source=${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind,readonly"
+            "source=${localEnv:HOME}/.gnupg,target=/home/node/.gnupg,type=bind"
         )
 
     # Add docker run flags (ports, volumes, env vars) to runArgs

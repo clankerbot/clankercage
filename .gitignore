@@ -57,5 +57,10 @@ sync-test.md
 session-summary.md
 TODO.md
 writing-style-guide.md
+writing-style-guide-2.md
 clankercage-grafana
 gpg-signing-worktree
+blog/
+
+# Claude local settings
+.claude/settings.local.json
